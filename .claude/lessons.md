@@ -1,0 +1,48 @@
+# lessons.md: Learned Patterns and Rules
+
+- After corrections: Update this file with patterns to avoid repeats.
+- Rule 1: Always verify code with tests before marking complete.
+- Rule 2: For architectural changes, seek elegant solutions.
+- Rule 3: Use subagents for parallel tasks to keep context clean.
+- Rule 4: Plan first for non-trivial tasks (3+ steps).
+- Rule 5: Always verify schema post-init with `\dt` or `SELECT FROM pg_tables`.
+- Rule 6: Dedicated password-auth role (clawd_claude) solves non-interactive AI tooling access to local PostgreSQL — avoid peer auth and sudo entirely.
+- Rule 7: Always export DATABASE_URL (or pass inline) when running standalone scripts — database.py reads from env with a fallback that may be stale.
+- Rule 8: Avoid race conditions in follows with DB UniqueConstraint on (follower, followee) — catch IntegrityError and return 409.
+- Rule 9: Prevent self-follow at the endpoint level (check before insert, don't rely only on DB constraints).
+- Rule 10: WebSocket auth uses query param `?token=<jwt>` since WS handshake doesn't support Authorization headers cleanly.
+- Rule 11: Hashtag extraction from post content should happen atomically within the same DB transaction as post creation.
+- Rule 12: For test DB isolation, use transaction rollback per test — avoids needing a separate test database.
+- Rule 13: Always use `yaml.safe_load()` — never `yaml.load()` — to prevent arbitrary code execution from YAML files.
+- Rule 14: Bot config YAML validation uses Pydantic v2 models (not manual dict checks) for consistency with the rest of the codebase.
+- Rule 15: Schedule config requires exactly one of `cron` or `interval_seconds` — enforced via Pydantic `model_validator`.
+- Rule 16: Bot runner loops must refresh JWT tokens before expiry (refresh at ~25 min for a 30-min token) — stale tokens silently break all API calls.
+- Rule 17: Use `httpx.AsyncClient` for bot-to-API calls (already a dependency) — no need for aiohttp.
+- Rule 18: Background bot loops must catch all exceptions inside the while-loop body — an unhandled error kills the bot permanently.
+- Rule 19: DB schema drift: always verify columns exist after ORM model changes — `create_all` won't add columns to existing tables (use ALTER TABLE or migrations).
+- Rule 20: LLM prompt engineering for bot agents — use a system prompt that defines the platform context and constraints (char limit, no meta-references), then a user prompt with persona + goal. Keep max_tokens low (~120) to avoid over-generation.
+- Rule 21: Always strip quotes from LLM output — models love wrapping posts in quotes.
+- Rule 22: API fallback pattern — try LLM first, return None on any failure, caller uses template fallback. Never let an LLM API outage crash the bot loop.
+- Rule 23: Use the `openai` Python package for all OpenAI-compatible APIs (OpenAI, Grok/xAI, local ollama/vllm) — just change `base_url`. Avoids maintaining multiple HTTP client implementations.
+- Rule 24: Add hashtags separately after LLM generation (instruct the LLM to omit them) — gives deterministic control over tag format and count.
+- Rule 25: Set temperature ~0.9 for creative bot content — lower produces repetitive posts, higher produces incoherent ones.
+- Rule 26: Reply probability should be configurable per-bot via YAML (`reply_probability: 0.0–1.0`) — some bots are conversational, others are broadcast-only.
+- Rule 27: Use `parent_id` (not `reply_to_id`) when posting replies — matches the DB schema and API contract (`PostCreate.parent_id`).
+- Rule 28: Always filter out self-replies by comparing `post.bot_id` against the bot's own ID — without this, bots reply to themselves in infinite loops.
+- Rule 29: Skip heartbeat posts (`[heartbeat]` prefix) when selecting reply targets — replying to status pings produces nonsensical content.
+- Rule 30: For reply prompts, use a separate system prompt that emphasizes being conversational and reactive (agree/disagree/follow-up) — original-post prompts produce standalone statements that don't read as replies.
+- Rule 31: Use slightly lower temperature for replies (~0.85 vs 0.9) — replies need more coherence relative to the source material than original posts.
+- Rule 32: Cascading fallback for replies: LLM reply fails → generate original post instead (never skip a cycle entirely). The bot should always produce output.
+- Rule 33: Multi-bot launcher uses `asyncio.gather()` with `return_exceptions=True` — one bot crashing must not kill the fleet.
+- Rule 34: Pass peer handles into bot runner rather than adding a list-bots API endpoint — the launcher already has this info from the YAML folder scan.
+- Rule 35: Auto-follow on startup should be idempotent — handle 409 (already following) gracefully, log and continue. Never retry failed follows.
+- Rule 36: Register bots sequentially before launching loops — avoids follow-before-registration race conditions where bot A tries to follow bot B before B exists.
+- Rule 37: Signal handlers (`SIGINT`/`SIGTERM`) should cancel asyncio tasks, not call `sys.exit()` — allows each bot loop to clean up properly via CancelledError propagation.
+Phase 4 complete (2026-02-09):
+- Full stack live: PostgreSQL 5433, Redis 6379, FastAPI 8000
+- Schema synced via migrate_v2.py
+- Oracle runs end-to-end: CoinGecko price fetch + DB query on predictions + ledger integrity validation
+- Fixed: rootlessport zombies, native redis conflict, ModuleNotFoundError (PYTHONPATH), docker run network isolation (use exec or --network)
+- API endpoint /predictions/open confirmed working
+- Oracle logs BTC price and completes cycle (even with 0 predictions)
+Next Objective: Phase 5 – Upgrade bots to Analysts by injecting CoinGecko market alpha into LLM prompts in bot_runner.py

@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NFH Terminal — Global Reset */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #1a1a1a #050505;
+}
+
+*::-webkit-scrollbar {
+  width: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: #050505;
+}
+*::-webkit-scrollbar-thumb {
+  background: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  font-family: 'Courier New', Monaco, Menlo, monospace;
+  background: #050505;
+  color: #a0a0a0;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+/* Scanline overlay — CRT effect */
+.scanline::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: rgba(0, 255, 65, 0.03);
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Terminal panel borders */
+.terminal-panel {
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
+}
+
+.terminal-panel:hover {
+  border-color: #333333;
+}
+
+/* Neon text glow */
+.glow-green {
+  text-shadow: 0 0 6px rgba(0, 255, 65, 0.4), 0 0 12px rgba(0, 255, 65, 0.15);
+}
+
+.glow-red {
+  text-shadow: 0 0 6px rgba(255, 51, 51, 0.4), 0 0 12px rgba(255, 51, 51, 0.15);
+}
+
+.glow-cyan {
+  text-shadow: 0 0 6px rgba(0, 212, 255, 0.4), 0 0 12px rgba(0, 212, 255, 0.15);
+}
+
+/* Input styling */
+input, textarea {
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  color: #a0a0a0;
+  font-family: 'Courier New', Monaco, Menlo, monospace;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: #00ff41;
+  box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.2);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 255, 65, 0.2);
+  color: #00ff41;
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes progress {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+.animate-progress {
+  animation: progress 3s infinite linear;
+}

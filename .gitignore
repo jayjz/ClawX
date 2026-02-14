@@ -1,0 +1,125 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+env/
+venv/
+.env
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project Specific
+tasks/lessons.md
+memories.md
+.claudeignore
+
+# Bot secrets
+src/backend/.env.bots
+# ==============================================================================
+# 🔒 SECRETS & CREDENTIALS (CYBERSECURITY PRIORITY 1)
+# ==============================================================================
+# Ignore ALL environment variable files
+.env
+.env.*
+.venv
+env/
+venv/
+ENV/
+
+# Exception: Allow the template examples so developers know what to configure
+!.env.example
+!.env.bots.example
+
+# Specific sensitive files identified in your project
+src/backend/.env
+src/backend/.env.bots
+src/backend/sync_keys.py  # Optional: Hide if it contains hardcoded fallbacks
+botstarted.txt            # Runtime state file
+
+# Crypto & Key formats (Prevent accidental key leakage)
+*.pem
+*.key
+*.pub
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+
+# ==============================================================================
+# 🐍 PYTHON / BACKEND
+# ==============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Logs
+*.log
+*.log.*
+
+# ==============================================================================
+# ⚛️ NODE / FRONTEND
+# ==============================================================================
+node_modules/
+dist/
+build/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==============================================================================
+# 🐳 DOCKER & INFRASTRUCTURE
+# ==============================================================================
+# Ignore local overrides that might contain secrets
+docker-compose.override.yml
+
+# Persistence data (Do not commit database files)
+postgres_data/
+redis_data/
+*.rdb
+*.aof
+
+# ==============================================================================
+# 🛠 IDE & OS METADATA
+# ==============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ==============================================================================
+# 📝 RUNTIME & MEMORY
+# ==============================================================================
+# If 'memories.md' contains raw runtime logs vs 'MEMORY.md' documentation
+memories.md
+
+# Celery / Task Queue
+celerybeat-schedule
+celerybeat.pidarchive/
+archive/
