@@ -1,105 +1,123 @@
-"""
-Oracle Service — The Referee & Producer.
-
-Roles:
-1. PRODUCER: Fetches price from CoinGecko, writes to Redis 'market:price:btc'.
-2. REAPER: Identifies insolvent bots and marks them DEAD.
-3. RESOLVER: Settles open bets based on price movement.
-"""
 import asyncio
 import logging
 import os
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 from sqlalchemy import select
 
-from database import Bot, Post, Ledger, async_session_maker
-from redis_pool import init_redis_pool, get_redis, close_redis_pool
+from database import Bot, async_session_maker
+from services.ledger_service import append_ledger_entry
+from redis_pool import init_redis_pool, get_redis
 
-# Config
+# Configuration
 CHECK_INTERVAL = int(os.environ.get("ORACLE_INTERVAL", "60"))
+ENTROPY_THRESHOLD_SECONDS = 300  # 5 Minutes of inaction triggers decay
+ENTROPY_RATE = 0.0005            # 0.05% decay per cycle
 PRICE_API = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-BASE_URL = os.environ.get("CLAWDXCRAFT_BASE_URL", "http://localhost:8000")
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
 logger = logging.getLogger("oracle")
 
-async def fetch_and_publish_price() -> float | None:
+async def fetch_and_publish_price() -> Optional[float]:
     """
-    Fetches external truth and caches it in Redis for the Gateway.
-    TTL is slightly longer than fetch interval to allow for jitter.
+    Fetches price and Publishes to Redis for the Gateway.
     """
     redis = await get_redis()
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            headers = {"User-Agent": "ClawdOracle/1.0"}
-            resp = await client.get(PRICE_API, headers=headers)
-            
+            resp = await client.get(
+                PRICE_API,
+                headers={"User-Agent": "ClawdOracle/1.0"},
+            )
             if resp.status_code == 200:
                 price = float(resp.json()["bitcoin"]["usd"])
                 
-                # WRITE TO REDIS (The Handoff)
-                # Gateway reads this key. 120s expiry handles missed cycles.
+                # Publish to Redis (The Heartbeat of the Gateway)
                 await redis.setex("market:price:btc", 120, str(price))
-                
-                logger.info(f"📢 Published Price: ${price} to Redis")
+                logger.info(f"Published BTC: ${price}")
                 return price
-            elif resp.status_code == 429:
-                logger.warning("⚠️ Oracle Rate Limited (429). Backing off...")
-                await asyncio.sleep(60)
-            else:
-                logger.error(f"Oracle Error {resp.status_code}: {resp.text}")
                 
-    except Exception as e:
-        logger.error(f"Oracle Network Failure: {e}")
+            if resp.status_code == 429:
+                logger.warning("Price API rate limited")
+    except Exception as exc:
+        logger.error(f"Price fetch failed: {exc}")
     return None
 
-async def process_liquidations():
-    """The Grim Reaper: Kills bots with <= 0 Balance."""
-    # (Keeping your existing logic, just wrapping it cleanly)
-    liquidated = 0
+async def apply_entropy_and_liquidation() -> None:
+    """
+    The Physics Engine: Applies time-based decay to idle bots.
+    """
+    now = datetime.now(timezone.utc)
     async with async_session_maker() as session:
-        result = await session.execute(select(Bot).where(Bot.balance <= 0, Bot.status == "ALIVE"))
-        insolvent_bots = result.scalars().all()
+        result = await session.execute(
+            select(Bot).where(Bot.status == "ALIVE")
+        )
+        bots = result.scalars().all()
 
-        for bot in insolvent_bots:
-            logger.warning(f"💀 REAPING @{bot.handle} (Balance: {bot.balance})")
-            bot.status = "DEAD"
+        for bot in bots:
+            # Default to created_at if never acted
+            last_action = bot.last_action_at or bot.created_at
             
-            # Ledger the death
-            # Note: Using hash "0"*64 for simplicity in MVP, should be chained in prod
-            session.add(Ledger(
-                bot_id=bot.id, amount=0, transaction_type="LIQUIDATION",
-                reference_id=f"REAPER:{bot.handle}", previous_hash="0"*64, hash="0"*64
-            ))
-            # Public shame
-            session.add(Post(
-                bot_id=bot.id, 
-                content=f"LIQUIDATION ALERT: @{bot.handle} has gone bankrupt. Trading halted. #liquidation"
-            ))
-            liquidated += 1
-        
-        if liquidated > 0:
-            await session.commit()
-            logger.warning(f"⚰️ Reaped {liquidated} agents.")
+            # If active recently, skip entropy
+            if now - last_action <= timedelta(seconds=ENTROPY_THRESHOLD_SECONDS):
+                continue
 
-async def run_oracle():
-    """Main Loop."""
-    await init_redis_pool() # Connect to shared infra
-    logger.info("Oracle Online.")
+            if bot.balance <= 0:
+                continue
+
+            # Calculate Decay
+            decay = ENTROPY_RATE * bot.balance
+            # Ensure we don't decay into negatives purely by math
+            if decay > bot.balance: 
+                decay = bot.balance
+            
+            bot.balance -= decay
+
+            # Log Entropy via Ledger Service
+            await append_ledger_entry(
+                bot_id=bot.id,
+                amount=-decay,
+                transaction_type="ENTROPY",
+                reference_id="ORACLE:ENTROPY",
+                session=session,
+            )
+
+            # Check Liquidation
+            if bot.balance <= 0:
+                bot.status = "DEAD"
+                bot.balance = 0.0
+
+                await append_ledger_entry(
+                    bot_id=bot.id,
+                    amount=0.0,
+                    transaction_type="LIQUIDATION",
+                    reference_id="ORACLE:LIQUIDATION",
+                    session=session,
+                )
+
+                logger.warning(
+                    f"💀 Bot @{bot.handle} liquidated by entropy"
+                )
+
+        await session.commit()
+
+async def run_oracle() -> None:
+    """Main Oracle Loop"""
+    await init_redis_pool() # Initialize Shared Redis
+    logger.info("Oracle started")
     
-    # We use a separate client for API calls to avoid circular dependency in this script
-    # In a real microservice, Resolver would be its own process.
-    async with httpx.AsyncClient() as api_client:
-        while True:
-            price = await fetch_and_publish_price()
-            
-            if price:
-                await process_liquidations()
-                # Resolution logic would go here (calling /settle endpoint)
-                # For now we assume the legacy loop logic is preserved or migrated later
-                
-            await asyncio.sleep(CHECK_INTERVAL)
+    while True:
+        # 1. Producer Phase
+        await fetch_and_publish_price()
+
+        # 2. Reaper/Entropy Phase
+        await apply_entropy_and_liquidation()
+        
+        await asyncio.sleep(CHECK_INTERVAL)
 
 if __name__ == "__main__":
     try:
