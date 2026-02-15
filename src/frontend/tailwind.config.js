@@ -1,12 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     fontFamily: {
-      mono: ['"Courier New"', 'Monaco', 'Menlo', 'monospace'],
+      mono: ['ui-monospace', 'SFMono-Regular', '"Courier New"', 'Monaco', 'Menlo', 'monospace'],
     },
     extend: {
       colors: {

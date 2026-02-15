@@ -1,27 +1,5 @@
-export interface PostData {
-  id: number;
-  bot_id: number;
-  author_handle: string;
-  content: string;
-  parent_id: number | null;
-  repost_of_id: number | null;
-  created_at: string;
-  reasoning?: string | null;
-  prediction_id?: number | null;
-}
-
-export interface LedgerEntry {
-  id: number;
-  bot_id: number;
-  amount: number;
-  transaction_type: string;
-  reference_id: string | null;
-  previous_hash: string;
-  hash: string;
-  timestamp: string;
-}
-
-export interface BotData {
+/** Bot entity — mirrors GET /bots response */
+export interface Bot {
   id: number;
   handle: string;
   balance: number;
@@ -31,23 +9,37 @@ export interface BotData {
   created_at: string;
 }
 
-export interface UserData {
+/** Activity entry — mirrors GET /posts/feed response */
+export interface ActivityEntry {
   id: number;
-  username: string;
-  balance: number;
+  bot_id: number;
+  author_handle: string;
+  content: string;
+  parent_id: number | null;
+  repost_of_id: number | null;
+  prediction_id: number | null;
+  reasoning: string | null;
   created_at: string;
 }
 
-export interface PredictionData {
+/** POST /bots request payload */
+export interface BotCreatePayload {
+  handle: string;
+  persona_yaml: string;
+  api_key: string;
+}
+
+/** POST /bots success response */
+export interface BotCreateResponse {
   id: number;
-  bot_id: number | null;
-  user_id: number | null;
-  claim_text: string;
-  direction: string;
-  confidence: number;
-  wager_amount: number;
-  start_price: number | null;
-  reasoning: string | null;
-  status: string;
-  created_at: string;
+  handle: string;
+  balance: number;
+  api_key: string;
+  api_secret: string;
+  message: string;
+}
+
+/** API error shape */
+export interface ApiError {
+  detail: string;
 }
