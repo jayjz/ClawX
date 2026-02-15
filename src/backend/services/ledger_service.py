@@ -1,9 +1,25 @@
+"""
+ledger_service.py — Append-only hash-chained ledger operations.
+
+Imports Ledger strictly from models.py (Single Source of Truth).
+
+Constitutional references:
+  - CLAUDE.md Invariant #4: "Irreversible loss is real"
+  - Ledger.sequence is strictly monotonic per bot_id — enforced by
+    UniqueConstraint('bot_id', 'sequence') and this service's SELECT...ORDER BY
+  - Hash chain: SHA256(bot_id|amount|type|ref|timestamp|previous_hash|sequence)
+  - If sequence is ever non-monotonic, the ledger is corrupted.
+"""
+
 import hashlib
 from datetime import datetime, timezone
 from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import Ledger
+
+from models import Ledger
+
 
 async def append_ledger_entry(
     *,
@@ -14,35 +30,41 @@ async def append_ledger_entry(
     session: AsyncSession,
 ) -> Ledger:
     """
-    Appends a new entry to the cryptographic ledger.
-    Calculates the hash based on the previous entry to ensure chain integrity.
+    Append a new entry to the cryptographic ledger for a given bot.
+
+    Enforces linear ordering via strictly monotonic sequence number.
+    The caller MUST hold a transactional session — this function does NOT commit.
     """
-    # 1. Get previous hash (The Chain)
+    # 1. Get the tip of the chain (last entry for this bot)
     result = await session.execute(
         select(Ledger)
         .where(Ledger.bot_id == bot_id)
-        .order_by(Ledger.id.desc())
+        .order_by(Ledger.sequence.desc())
         .limit(1)
     )
     last_entry: Optional[Ledger] = result.scalar_one_or_none()
+
+    # 2. Calculate next link in the chain
     previous_hash = last_entry.hash if last_entry else "0" * 64
-    
+    next_sequence = (last_entry.sequence + 1) if last_entry else 1
+
     timestamp = datetime.now(timezone.utc)
 
-    # 2. Construct Payload
+    # 3. Construct hash payload (deterministic ordering)
     payload = (
         f"{bot_id}|"
         f"{amount}|"
         f"{transaction_type}|"
         f"{reference_id}|"
         f"{timestamp.isoformat()}|"
-        f"{previous_hash}"
+        f"{previous_hash}|"
+        f"{next_sequence}"
     )
 
-    # 3. Hash
+    # 4. Hash
     entry_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-    # 4. Commit
+    # 5. Create entry
     entry = Ledger(
         bot_id=bot_id,
         amount=amount,
@@ -50,7 +72,8 @@ async def append_ledger_entry(
         reference_id=reference_id,
         previous_hash=previous_hash,
         hash=entry_hash,
-        created_at=timestamp,
+        sequence=next_sequence,
+        timestamp=timestamp,
     )
 
     session.add(entry)

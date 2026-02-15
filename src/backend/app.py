@@ -1,5 +1,7 @@
 import logging
 import os
+import secrets
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,8 +14,10 @@ from routers import social as social_router
 from routers import gateway as gateway_router
 from redis_pool import init_redis_pool, close_redis_pool
 from models import (
-    BotResponse, PostResponse, PredictionResponse, TokenRequest, TokenResponse
+    BotCreate, BotResponse, PostResponse, PredictionResponse,
+    TokenRequest, TokenResponse,
 )
+from services.ledger_service import append_ledger_entry
 from utils.jwt import create_access_token
 import bcrypt as _bcrypt
 
@@ -71,6 +75,72 @@ async def auth_token(body: TokenRequest, session: AsyncSession = Depends(get_ses
 async def list_bots(session: AsyncSession = Depends(get_session)) -> list[BotResponse]:
     result = await session.execute(select(Bot).order_by(Bot.id))
     return [_bot_to_response(b) for b in result.scalars().all()]
+
+
+@app.post("/bots", status_code=201)
+async def create_bot(body: BotCreate, session: AsyncSession = Depends(get_session)):
+    """Create a new bot with GRANT ledger entry.
+
+    Returns the bot ID, raw API key (one-time display), and api_secret
+    for arena gateway auth. All money enters via the ledger — no balance
+    is set without a corresponding GRANT entry (CLAUDE.md Invariant #4).
+    """
+    # Uniqueness check
+    existing = await session.execute(select(Bot).where(Bot.handle == body.handle))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Handle '{body.handle}' already exists")
+
+    # Credential generation (lessons.md: no hardcoded secrets)
+    raw_api_key = body.api_key
+    hashed_key = _bcrypt.hashpw(raw_api_key.encode(), _bcrypt.gensalt()).decode()
+    api_secret = secrets.token_hex(32)
+
+    initial_balance = 1000.0
+
+    bot = Bot(
+        handle=body.handle,
+        persona_yaml=body.persona_yaml,
+        hashed_api_key=hashed_key,
+        api_secret=api_secret,
+        balance=initial_balance,
+        status="ALIVE",
+        is_external=False,
+    )
+    session.add(bot)
+    await session.flush()  # get bot.id
+
+    # GRANT ledger entry — all money must enter through the chain
+    await append_ledger_entry(
+        bot_id=bot.id,
+        amount=initial_balance,
+        transaction_type="GRANT",
+        reference_id="GENESIS_GRANT",
+        session=session,
+    )
+
+    session.add(AuditLog(bot_id=bot.id, action="BOT_CREATED"))
+    await session.commit()
+
+    logger.info("Bot created: id=%d handle=%s", bot.id, bot.handle)
+    return {
+        "id": bot.id,
+        "handle": bot.handle,
+        "balance": bot.balance,
+        "api_key": raw_api_key,
+        "api_secret": api_secret,
+        "message": "Save these credentials. They will not be shown again.",
+    }
+
+
+@app.get("/bots/{handle}", response_model=BotResponse)
+async def get_bot_by_handle(handle: str, session: AsyncSession = Depends(get_session)):
+    """Lookup a bot by handle. Used by bot_runner to get bot state."""
+    result = await session.execute(select(Bot).where(Bot.handle == handle))
+    bot = result.scalar_one_or_none()
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot '{handle}' not found")
+    return _bot_to_response(bot)
+
 
 @app.get("/posts/feed", response_model=list[PostResponse])
 async def get_feed(limit: int = Query(default=20), offset: int = Query(default=0), session: AsyncSession = Depends(get_session)):

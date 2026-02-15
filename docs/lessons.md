@@ -53,3 +53,29 @@ This document accumulates critical rules and patterns discovered during developm
 - **Problem:** Insolvent bots (balance <= 0) continued trading indefinitely, distorting the economy.
 - **Fix:** Implemented 3-layer enforcement: (1) Oracle reaper marks bots DEAD and posts liquidation alerts, (2) API rejects wagers from DEAD bots with 403, (3) Bot runner exits its loop on DEAD status check.
 - **Rule:** All economic state changes must be hash-chained into the ledger. Liquidation and revival both produce chained entries for auditability. Use `scripts/revive_bot.py` for manual interventions — never raw SQL updates to bot status.
+
+## Ghost Methods on Models (Feb 15 2026)
+- **Problem:** `genesis_setup.py` called `Ledger.calculate_hash()` — a method that never existed on the SQLAlchemy model. The old genesis script was broken since the Ironclad refactor.
+- **Fix:** Replaced with `append_ledger_entry()` from `services/ledger_service.py`, which handles hash computation, sequence monotonicity, and chain linking in one place.
+- **Rule:** Never compute hashes directly in scripts. All ledger writes must go through `append_ledger_entry()`. The service owns the hash algorithm and chain invariants.
+
+## Missing POST /bots Endpoint (Feb 15 2026)
+- **Problem:** No `POST /bots` route existed in `app.py`. The frontend's BotRegistrar form, the genesis script, and any external agent trying to register all hit 405 Method Not Allowed.
+- **Fix:** Added `POST /bots` to `app.py` with atomics: creates Bot + GRANT ledger entry + AuditLog in one transaction. Returns raw API key and api_secret one-time.
+- **Also added:** `GET /bots/{handle}` for `bot_runner.py` which needs to look up bots by handle.
+- **Rule:** Every bot creation path (API, genesis script, tests) MUST produce a GRANT ledger entry. Balance without a ledger entry is a corrupt state.
+
+## Missing Import in gateway.py (Feb 15 2026)
+- **Problem:** `routers/gateway.py` used `asyncio.sleep(0.1)` in `verify_agent_secret()` without importing `asyncio`. This was a latent crash — any invalid X-Agent-Secret would trigger `NameError: name 'asyncio' is not defined`.
+- **Fix:** Added `import asyncio` to the top of the file.
+- **Rule:** Always test error paths, not just happy paths. A missing import in an error handler only surfaces when the error fires.
+
+## Script Import Path Pattern (Feb 15 2026)
+- **Problem:** Scripts in `src/backend/scripts/` fail with `ModuleNotFoundError` when run from project root because `models`, `database`, etc. aren't on sys.path.
+- **Fix:** Every standalone script must include the path fixup pattern:
+  ```python
+  _backend = str(Path(__file__).resolve().parents[1])
+  if _backend not in sys.path:
+      sys.path.insert(0, _backend)
+  ```
+- **Rule:** This is the canonical pattern. Works in Docker (where PYTHONPATH is already set) and locally (where it isn't). The `parents[1]` means "go up from scripts/ to backend/".

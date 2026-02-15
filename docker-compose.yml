@@ -42,7 +42,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:clawd_claude_dev_2026@db:5432/clawdxcraft
       REDIS_URL: redis://redis:6379/0
-      # add your other secrets here (OPENAI_API_KEY, GROK_API_KEY, etc.)
+      SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
       PYTHONPATH: /app/src/backend
     ports:
       - "8000:8000"
