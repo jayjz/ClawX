@@ -35,6 +35,7 @@ import argparse
 import asyncio
 import secrets
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 # --- Path fixup: works from any CWD, Docker or local ---
@@ -69,7 +70,7 @@ async def ensure_genesis_bot() -> bool:
             persona_yaml="Sacrificial reference agent — exists to prove the system works.",
             hashed_api_key=hashed_key,
             api_secret=api_secret,
-            balance=1000.0,
+            balance=Decimal('1000.00'),
             status="ALIVE",
             is_external=False,
         )
@@ -78,7 +79,7 @@ async def ensure_genesis_bot() -> bool:
 
         await append_ledger_entry(
             bot_id=bot.id,
-            amount=1000.0,
+            amount=Decimal('1000.00'),
             transaction_type="GRANT",
             reference_id="GENESIS_GRANT",
             session=session,

@@ -28,13 +28,14 @@ import sys
 import time
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import httpx
 
 from bot_loader import load_bot_config
 from database import async_session_maker
 from llm_client import generate_prediction
-from models import Bot
+from models import Bot, Post
 from services.ledger_service import append_ledger_entry
 from sqlalchemy import select
 from thread_memory import get_redis_client
@@ -45,7 +46,7 @@ TOKEN_REFRESH_SECONDS = 25 * 60  # refresh before 30-min JWT expiry
 # === THE LAW ===
 # Every tick costs this much. No exceptions. No free existence.
 # At 1000 credits and 60s ticks, a heartbeat-only bot survives ~2000 ticks (~33 hours).
-ENTROPY_FEE = 0.50
+ENTROPY_FEE = Decimal('0.50')
 
 logger = logging.getLogger("bot_runner")
 
@@ -91,24 +92,36 @@ async def execute_tick(
                 logger.info("TICK %s: SKIP bot_id=%d (DEAD or missing)", tick_id[:8], bot_id)
                 return "HEARTBEAT"  # No ledger write for dead bots
 
+            # Convert DB balance to Decimal for exact math
+            current_balance = Decimal(str(bot.balance))
+
             # === STEP 1: LIQUIDATION CHECK — can the bot afford to exist? ===
-            if bot.balance < ENTROPY_FEE:
+            if current_balance < ENTROPY_FEE:
+                # CRITICAL FIX: drain exact remaining balance, not 0.0
+                drain_amount = -current_balance
                 bot.status = "DEAD"
-                bot.balance = 0.0
+                bot.balance = Decimal('0')
                 bot.last_action_at = datetime.now(timezone.utc)
 
                 await append_ledger_entry(
                     bot_id=bot_id,
-                    amount=0.0,
+                    amount=float(drain_amount),
                     transaction_type="LIQUIDATION",
                     reference_id=f"TICK:{tick_id}:LIQUIDATION",
                     session=session,
                 )
                 ledger_written = True
+
+                # Feed post: LIQUIDATION (meaningful event)
+                session.add(Post(
+                    bot_id=bot_id,
+                    content=f"LIQUIDATED. Balance reached {current_balance:.2f}c. Eliminated from the arena. Irreversible."[:280],
+                ))
+
                 await session.commit()
                 logger.warning(
-                    "TICK %s: LIQUIDATION bot_id=%d (balance=%.4f < fee=%.2f)",
-                    tick_id[:8], bot_id, bot.balance, ENTROPY_FEE,
+                    "TICK %s: LIQUIDATION bot_id=%d (balance=%s < fee=%s)",
+                    tick_id[:8], bot_id, current_balance, ENTROPY_FEE,
                 )
                 return "LIQUIDATION"
 
@@ -129,57 +142,53 @@ async def execute_tick(
             prediction = await generate_prediction(
                 config.get("persona", "Arena agent"),
                 market_context,
-                bot.balance,
+                float(current_balance),
             )
 
             # === STEP 3: WAGER or HEARTBEAT ===
-            if prediction and bot.balance >= (ENTROPY_FEE + 5.0):
+            min_wager_balance = ENTROPY_FEE + Decimal('5.0')
+            if prediction and current_balance >= min_wager_balance:
                 # Wager: capped at 10% of (balance minus fee)
-                available = bot.balance - ENTROPY_FEE
-                wager = min(prediction["wager_amount"], available * 0.1)
-                wager = max(wager, 0.01)  # floor
+                available = current_balance - ENTROPY_FEE
+                raw_wager = Decimal(str(prediction["wager_amount"]))
+                wager = min(raw_wager, available * Decimal('0.1'))
+                wager = max(wager, Decimal('0.01'))  # floor
                 total_cost = ENTROPY_FEE + wager
 
-                bot.balance -= total_cost
+                bot.balance = current_balance - total_cost
                 bot.last_action_at = datetime.now(timezone.utc)
 
                 await append_ledger_entry(
                     bot_id=bot_id,
-                    amount=-total_cost,
+                    amount=float(-total_cost),
                     transaction_type="WAGER",
                     reference_id=f"TICK:{tick_id}",
                     session=session,
                 )
                 ledger_written = True
 
-                # Best-effort social post
-                if http_client and http_headers:
-                    try:
-                        direction = prediction.get("direction", "UP")
-                        reasoning = prediction.get("reasoning", "Trust the data.")
-                        brag = f"Wagered {wager:.2f} on {direction}. {reasoning}"
-                        await http_client.post(
-                            f"{BASE_URL}/posts",
-                            json={"content": brag[:280]},
-                            headers=http_headers,
-                        )
-                    except Exception:
-                        pass
+                # Feed post: WAGER (meaningful event — atomic, same transaction)
+                direction = prediction.get("direction", "UP")
+                reasoning = prediction.get("reasoning", "Trust the data.")
+                session.add(Post(
+                    bot_id=bot_id,
+                    content=f"Wagered {wager:.2f}c on {direction}. {reasoning}"[:280],
+                ))
 
                 await session.commit()
                 logger.info(
-                    "TICK %s: WAGER bot_id=%d fee=%.2f wager=%.2f total=%.2f",
+                    "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
                     tick_id[:8], bot_id, ENTROPY_FEE, wager, total_cost,
                 )
                 return "WAGER"
 
-            # No wager — HEARTBEAT with entropy fee
-            bot.balance -= ENTROPY_FEE
+            # No wager — HEARTBEAT with entropy fee (NO feed post — silence is golden)
+            bot.balance = current_balance - ENTROPY_FEE
             bot.last_action_at = datetime.now(timezone.utc)
 
             await append_ledger_entry(
                 bot_id=bot_id,
-                amount=-ENTROPY_FEE,
+                amount=float(-ENTROPY_FEE),
                 transaction_type="HEARTBEAT",
                 reference_id=f"TICK:{tick_id}",
                 session=session,
@@ -187,7 +196,7 @@ async def execute_tick(
             ledger_written = True
             await session.commit()
             logger.info(
-                "TICK %s: HEARTBEAT bot_id=%d fee=%.2f",
+                "TICK %s: HEARTBEAT bot_id=%d fee=%s",
                 tick_id[:8], bot_id, ENTROPY_FEE,
             )
             return "HEARTBEAT"
@@ -197,38 +206,46 @@ async def execute_tick(
             if not ledger_written:
                 try:
                     async with async_session_maker() as err_session:
-                        # Re-load bot for the error session
                         result = await err_session.execute(
                             select(Bot).where(Bot.id == bot_id)
                         )
                         err_bot = result.scalar_one_or_none()
+                        reason = type(exc).__name__
                         if err_bot and err_bot.status == "ALIVE":
-                            if err_bot.balance >= ENTROPY_FEE:
-                                err_bot.balance -= ENTROPY_FEE
-                                fee_amount = -ENTROPY_FEE
+                            err_balance = Decimal(str(err_bot.balance))
+                            if err_balance >= ENTROPY_FEE:
+                                err_bot.balance = err_balance - ENTROPY_FEE
+                                fee_amount = float(-ENTROPY_FEE)
+                                tx_type = "HEARTBEAT"
+                                ref = f"TICK:{tick_id}:ERROR:{reason}"
                             else:
-                                err_bot.balance = 0.0
+                                fee_amount = float(-err_balance)
+                                err_bot.balance = Decimal('0')
                                 err_bot.status = "DEAD"
-                                fee_amount = 0.0
+                                tx_type = "LIQUIDATION"
+                                ref = f"TICK:{tick_id}:LIQUIDATION"
                             err_bot.last_action_at = datetime.now(timezone.utc)
 
-                        reason = type(exc).__name__
-                        tx_type = "HEARTBEAT" if (err_bot and err_bot.status == "ALIVE") else "LIQUIDATION"
-                        ref = f"TICK:{tick_id}:ERROR:{reason}" if tx_type == "HEARTBEAT" else f"TICK:{tick_id}:LIQUIDATION"
+                            await append_ledger_entry(
+                                bot_id=bot_id,
+                                amount=fee_amount,
+                                transaction_type=tx_type,
+                                reference_id=ref,
+                                session=err_session,
+                            )
 
-                        await append_ledger_entry(
-                            bot_id=bot_id,
-                            amount=fee_amount if err_bot else 0.0,
-                            transaction_type=tx_type,
-                            reference_id=ref,
-                            session=err_session,
-                        )
-                        await err_session.commit()
-                        ledger_written = True
-                        logger.warning(
-                            "TICK %s: %s (error) bot_id=%d error=%s",
-                            tick_id[:8], tx_type, bot_id, exc,
-                        )
+                            # Feed post: ERROR (meaningful event)
+                            err_session.add(Post(
+                                bot_id=bot_id,
+                                content=f"System error during tick: {reason}. Entropy fee charged."[:280],
+                            ))
+
+                            await err_session.commit()
+                            ledger_written = True
+                            logger.warning(
+                                "TICK %s: %s (error) bot_id=%d error=%s",
+                                tick_id[:8], tx_type, bot_id, exc,
+                            )
                 except Exception as inner:
                     logger.critical(
                         "TICK %s: LEDGER WRITE FAILED bot_id=%d: %s (original: %s)",

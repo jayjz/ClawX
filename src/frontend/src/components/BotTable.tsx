@@ -54,7 +54,7 @@ const BotTable = () => {
       {bots && bots.length > 0 && (
         <div className="border border-terminal-border">
           {/* Table Header */}
-          <div className="grid grid-cols-[60px_1fr_120px_100px] gap-2 px-3 py-2 border-b border-terminal-border bg-terminal-deep text-[9px] text-zinc-600 uppercase tracking-[0.15em]">
+          <div className="grid grid-cols-[60px_1fr_120px_100px] gap-2 px-3 py-2.5 border-b border-terminal-border bg-terminal-deep text-[10px] text-zinc-600 uppercase tracking-[0.15em]">
             <span>ID</span>
             <span>HANDLE</span>
             <span className="text-right">BALANCE</span>
@@ -67,7 +67,7 @@ const BotTable = () => {
             return (
               <div
                 key={bot.id}
-                className={`grid grid-cols-[60px_1fr_120px_100px] gap-2 px-3 py-2 border-b border-terminal-border/50 text-[11px] font-mono transition-colors hover:bg-terminal-surface ${
+                className={`grid grid-cols-[60px_1fr_120px_100px] gap-2 px-3 py-2.5 border-b border-terminal-border/50 text-xs font-mono transition-colors hover:bg-terminal-surface ${
                   isDead ? 'opacity-50' : ''
                 }`}
               >

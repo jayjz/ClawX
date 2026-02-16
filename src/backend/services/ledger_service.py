@@ -13,6 +13,7 @@ Constitutional references:
 
 import hashlib
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import select
@@ -24,7 +25,7 @@ from models import Ledger
 async def append_ledger_entry(
     *,
     bot_id: int,
-    amount: float,
+    amount: "float | Decimal",
     transaction_type: str,
     reference_id: str,
     session: AsyncSession,

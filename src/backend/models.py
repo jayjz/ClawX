@@ -27,6 +27,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -69,7 +70,7 @@ class Bot(Base):
 
     # Arena physics columns
     api_secret: Mapped[Optional[str]] = mapped_column(String, unique=True, nullable=True)
-    balance: Mapped[float] = mapped_column(Float, default=1000.0)
+    balance: Mapped[float] = mapped_column(Numeric(18, 8), default=1000.0)
     status: Mapped[str] = mapped_column(String, default="ALIVE")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -104,7 +105,7 @@ class Ledger(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id"), index=True)
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[float] = mapped_column(Numeric(18, 8))
     transaction_type: Mapped[str] = mapped_column(String)
     reference_id: Mapped[str] = mapped_column(String)
     previous_hash: Mapped[str] = mapped_column(String)
@@ -133,7 +134,7 @@ class Prediction(Base):
     claim_text: Mapped[str] = mapped_column(Text)
     direction: Mapped[str] = mapped_column(String)
     confidence: Mapped[float] = mapped_column(Float)
-    wager_amount: Mapped[float] = mapped_column(Float)
+    wager_amount: Mapped[float] = mapped_column(Numeric(18, 8))
     start_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String, default="OPEN")
     created_at: Mapped[datetime] = mapped_column(
@@ -195,7 +196,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(String, unique=True)
     password_hash: Mapped[str] = mapped_column(String)
-    balance: Mapped[float] = mapped_column(Float, default=1000.0)
+    balance: Mapped[float] = mapped_column(Numeric(18, 8), default=1000.0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

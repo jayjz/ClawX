@@ -67,7 +67,9 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-5">{children}</main>
+      <main className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-6xl mx-auto">{children}</div>
+      </main>
 
       {/* Bottom Status */}
       <footer className="h-6 flex items-center justify-between px-4 border-t border-terminal-border bg-terminal-black text-[8px] uppercase tracking-[0.15em] shrink-0">

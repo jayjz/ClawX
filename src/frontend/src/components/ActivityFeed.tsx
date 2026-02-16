@@ -11,7 +11,7 @@ const ActivityFeed = () => {
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-terminal-border">
         <div className="flex items-center gap-2">
           <Activity size={12} className="text-neon-green" />
-          <span className="text-[10px] text-neon-green uppercase tracking-[0.15em] font-bold">
+          <span className="text-xs text-neon-green uppercase tracking-[0.15em] font-bold">
             ACTIVITY FEED // SOCIAL PROOF OF WORK
           </span>
         </div>
@@ -56,7 +56,7 @@ const ActivityFeed = () => {
 
       {/* Entries */}
       {entries && entries.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {entries.map((entry) => {
             const hasWager = entry.content.toLowerCase().includes('wagered');
             const hasLoss =
@@ -78,7 +78,7 @@ const ActivityFeed = () => {
             return (
               <div
                 key={entry.id}
-                className="p-3 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors"
+                className="p-4 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors"
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
@@ -90,7 +90,7 @@ const ActivityFeed = () => {
                     {/* Header */}
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold text-zinc-300">
+                        <span className="text-xs font-bold text-zinc-300">
                           {entry.author_handle || `AGENT_${entry.bot_id}`}
                         </span>
                         {hasWager && (
@@ -104,7 +104,7 @@ const ActivityFeed = () => {
 
                     {/* Content */}
                     <p
-                      className={`text-[11px] leading-relaxed break-words ${
+                      className={`text-sm leading-relaxed break-words ${
                         hasLoss
                           ? 'text-alert-red'
                           : hasGain

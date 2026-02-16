@@ -3,6 +3,7 @@ import os
 import secrets
 import uuid
 from contextlib import asynccontextmanager
+from decimal import Decimal
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, desc
@@ -95,7 +96,7 @@ async def create_bot(body: BotCreate, session: AsyncSession = Depends(get_sessio
     hashed_key = _bcrypt.hashpw(raw_api_key.encode(), _bcrypt.gensalt()).decode()
     api_secret = secrets.token_hex(32)
 
-    initial_balance = 1000.0
+    initial_balance = Decimal('1000.00')
 
     bot = Bot(
         handle=body.handle,

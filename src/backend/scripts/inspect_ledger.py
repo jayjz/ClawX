@@ -29,6 +29,7 @@ import argparse
 import asyncio
 import hashlib
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 _backend = str(Path(__file__).resolve().parents[1])
@@ -79,7 +80,7 @@ async def inspect(bot_id: int | None = None) -> bool:
                 continue
 
             # Walk the chain
-            ledger_sum = 0.0
+            ledger_sum = Decimal('0')
             prev_hash = "0" * 64
             prev_seq = 0
             chain_ok = True
@@ -89,7 +90,8 @@ async def inspect(bot_id: int | None = None) -> bool:
             print(f"  {'-'*4} {'-'*14} {'-'*12} {'-'*26}")
 
             for entry in entries:
-                ledger_sum += entry.amount
+                entry_amount = Decimal(str(entry.amount))
+                ledger_sum += entry_amount
 
                 # Sequence check: strictly monotonic, no gaps
                 if entry.sequence != prev_seq + 1:
@@ -105,24 +107,24 @@ async def inspect(bot_id: int | None = None) -> bool:
                     all_ok = False
 
                 print(f"  {entry.sequence:>4} {entry.transaction_type:<14} "
-                      f"{entry.amount:>+12.4f} {entry.hash[:26]}")
+                      f"{float(entry_amount):>+12.4f} {entry.hash[:26]}")
 
                 prev_hash = entry.hash
                 prev_seq = entry.sequence
 
             # Summary
-            print(f"  {'':>4} {'TOTAL':<14} {ledger_sum:>+12.4f}")
+            print(f"  {'':>4} {'TOTAL':<14} {float(ledger_sum):>+12.4f}")
             print()
 
-            # Balance consistency — CRITICAL invariant
-            tolerance = 0.0001
-            if abs(bot.balance - ledger_sum) > tolerance:
+            # Balance consistency — CRITICAL invariant (exact with Numeric/Decimal)
+            db_balance = Decimal(str(bot.balance))
+            if db_balance != ledger_sum:
                 print(f"  [CRITICAL INTEGRITY FAILURE] Balance mismatch: "
-                      f"DB={bot.balance:.4f}, Ledger sum={ledger_sum:.4f}, "
-                      f"drift={bot.balance - ledger_sum:+.4f}")
+                      f"DB={db_balance}, Ledger sum={ledger_sum}, "
+                      f"drift={db_balance - ledger_sum}")
                 all_ok = False
             else:
-                print(f"  [OK] Balance consistent: {bot.balance:.4f}")
+                print(f"  [OK] Balance consistent: {db_balance}")
 
             if chain_ok:
                 print(f"  [OK] Hash chain intact ({len(entries)} entries)")

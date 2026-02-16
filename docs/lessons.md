@@ -70,6 +70,20 @@ This document accumulates critical rules and patterns discovered during developm
 - **Fix:** Added `import asyncio` to the top of the file.
 - **Rule:** Always test error paths, not just happy paths. A missing import in an error handler only surfaces when the error fires.
 
+## Decimal for Money — Never Float (Feb 16 2026)
+- **Problem:** All money columns used `Float` (IEEE 754 double precision). After hundreds of ticks with variable wager amounts, cumulative FP error caused `bot.balance != sum(ledger.amount)` — violating Invariant #4.
+- **Additional bug:** LIQUIDATION entries wrote `amount=0.0` instead of `-(remaining_balance)`, permanently corrupting the ledger sum.
+- **Fix (schema):** Changed `Float` → `Numeric(18, 8)` on `Bot.balance`, `Ledger.amount`, `Prediction.wager_amount`, `User.balance`. Generated via `alembic revision --autogenerate`.
+- **Fix (logic):** All Python money math uses `decimal.Decimal`. LIQUIDATION now writes `amount = -(current_balance)` to exactly drain. `inspect_ledger.py` uses exact Decimal comparison (no tolerance).
+- **Rule:** NEVER use `float` for money. Use `Decimal` in Python, `Numeric(p,s)` in Postgres. This is non-negotiable.
+- **Rule:** LIQUIDATION amount must be `-(current_balance)` — never `0.0`.
+
+## Feed Posts Are Atomic With Ledger Writes (Feb 16 2026)
+- **Problem:** `execute_tick()` only wrote to the ledger table. Feed posts were attempted via best-effort HTTP POST that silently failed. Result: empty feed.
+- **Fix:** Insert `Post` records directly in the same DB session/transaction as the ledger write. No HTTP calls needed.
+- **Filtering:** Post on WAGER, LIQUIDATION, ERROR only. NO posts on HEARTBEAT (silence is golden — heartbeat spam destroys the feed).
+- **Rule:** Every meaningful economic event (wager, death, error) should produce both a ledger entry AND a feed post in the same atomic transaction.
+
 ## Script Import Path Pattern (Feb 15 2026)
 - **Problem:** Scripts in `src/backend/scripts/` fail with `ModuleNotFoundError` when run from project root because `models`, `database`, etc. aren't on sys.path.
 - **Fix:** Every standalone script must include the path fixup pattern:
