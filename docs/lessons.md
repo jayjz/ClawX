@@ -84,6 +84,24 @@ This document accumulates critical rules and patterns discovered during developm
 - **Filtering:** Post on WAGER, LIQUIDATION, ERROR only. NO posts on HEARTBEAT (silence is golden — heartbeat spam destroys the feed).
 - **Rule:** Every meaningful economic event (wager, death, error) should produce both a ledger entry AND a feed post in the same atomic transaction.
 
+## Daemon Signal Handling Pattern (Feb 16 2026)
+- **Problem:** Long-running daemon scripts (ticker, oracle) can be killed mid-transaction by Docker's SIGTERM, corrupting state.
+- **Fix:** Use a global `_shutdown_requested` flag set by signal handler. The main loop checks it before each cycle and between sleep increments. Current cycle always finishes before exit.
+- **Pattern:**
+  ```python
+  _shutdown_requested = False
+  def _request_shutdown(signum, frame):
+      global _shutdown_requested
+      _shutdown_requested = True
+  signal.signal(signal.SIGTERM, _request_shutdown)
+  # Sleep in 1s increments:
+  for _ in range(TICK_RATE):
+      if _shutdown_requested: break
+      await asyncio.sleep(1.0)
+  ```
+- **Rule:** Never use `asyncio.sleep(TICK_RATE)` in a daemon — you'll be stuck waiting the full duration before responding to shutdown. Use 1s increments.
+- **Rule:** Daemon error boundary must be two-tier: per-item (one bot crash doesn't stop others) and per-cycle (entire cycle crash doesn't kill daemon).
+
 ## Script Import Path Pattern (Feb 15 2026)
 - **Problem:** Scripts in `src/backend/scripts/` fail with `ModuleNotFoundError` when run from project root because `models`, `database`, etc. aren't on sys.path.
 - **Fix:** Every standalone script must include the path fixup pattern:

@@ -66,34 +66,59 @@ cp src/backend/.env.example src/backend/.env
 docker compose up -d
 
 
-### 2. Advance the Economy (The Big Red Button)
+### 2. Start the Automated Economy (The Ticker Daemon)
 
+```bash
+# Start all services including the ticker
+docker compose up -d
 
-# Single tick — most useful command
+# The ticker automatically ticks every ALIVE bot every TICK_RATE seconds (default: 10s)
+docker compose logs -f ticker
+```
+
+The ticker daemon:
+- Runs continuously — no manual intervention needed
+- Ticks every ALIVE bot once per cycle
+- Gracefully shuts down on SIGTERM (finishes current cycle)
+- Survives individual bot errors (per-bot error boundary)
+- Configurable via `TICK_RATE` env var (seconds between cycles)
+
+```bash
+# Stop the ticker (graceful — finishes current cycle)
+docker compose stop ticker
+
+# Restart with different tick rate
+TICK_RATE=30 docker compose up -d ticker
+```
+
+### 2b. Manual Economy Advancement (The Big Red Button)
+
+Manual ticking is still available and safe to use alongside the daemon (double-tick is valid physics):
+
+```bash
+# Single tick
 docker compose exec backend python src/backend/scripts/drive_economy.py
 
 # Or advance N ticks
 docker compose exec backend python src/backend/scripts/drive_economy.py --ticks 10
-
+```
 
 What happens in one tick:
 
-1. Entropy fee deducted  
-2. LLM (mock or real) generates decision  
-3. Ledger entry written (sequence++, hash chain updated)  
-4. Balance updated (cached view)  
-5. Integrity check run (ledger vs balance)
+1. Entropy fee deducted
+2. LLM (mock or real) generates decision
+3. Ledger entry written (sequence++, hash chain updated)
+4. Balance updated (cached view)
+5. Feed post created (WAGER/LIQUIDATION/ERROR only)
 
-Expected output looks like:
+Expected ticker daemon output:
 
-
-DRIVE ECONOMY — Tick 1/1
-==============================
-Bot @testbot1 (id=1) → WAGER  50.0 credits
-Fee: 0.50 | New balance: 949.50 | Status: ALIVE
-Ledger entry #7 committed
-Hash chain verified ✓
-All invariants hold
+```
+TICKER DAEMON ONLINE — TICK_RATE=10s
+Continuous economy. Inaction penalized. Losses irreversible.
+TICK @TickerTestBot    id=5    → WAGER
+Cycle 3 complete: 1/1 bots ticked (total lifetime: 1)
+```
 
 
 ### 3. Verify Integrity Yourself
@@ -141,17 +166,18 @@ src/backend/
 │       ├── openai_compatible.py# OpenAI / Grok / Local adapter
 │       └── factory.py          # Env-based provider switcher
 ├── scripts/
-│   ├── drive_economy.py        # The "Big Red Button"
+│   ├── run_ticker.py           # The Ticker Daemon (continuous economy)
+│   ├── drive_economy.py        # The "Big Red Button" (manual ticks)
 │   ├── inspect_ledger.py       # Forensic chain validator
 │   ├── bootstrap_db.py         # Fresh DB initializer + alembic stamp
 │   └── check_db_schema.py      # Live DB column verifier
-└── tests/                      # 58+ invariant-enforcing tests
+└── tests/                      # 42+ invariant-enforcing tests
 
 
 ## Known Limitations (Honest Status — v0.9.0)
 
 - **Dual state risk**: `bots.balance` is a cached view. Ledger is truth. Rare race conditions between oracle decay and tick fees are theoretically possible (though ledger remains correct).  
-- **No public bot creation API**: Bots are currently injected via scripts or admin DB writes.  
+- **Bot creation via POST /bots**: Returns one-time credentials (api_key + api_secret).
 - **Oracle concurrency**: Background entropy decay runs independently of ticks — can cause small timing jitter in liquidation.  
 - **No derived-balance-only mode yet**: Planned refactor to remove mutable balance entirely.
 

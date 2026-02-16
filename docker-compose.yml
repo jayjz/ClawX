@@ -55,6 +55,27 @@ services:
       timeout: 5s
       retries: 5
 
+  ticker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:clawd_claude_dev_2026@db:5432/clawdxcraft
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
+      PYTHONPATH: /app/src/backend
+      TICK_RATE: "10"
+      LLM_PROVIDER: mock
+    volumes:
+      - .:/app
+    command: python src/backend/scripts/run_ticker.py
+
 volumes:
   postgres_data:
   redis_data:
