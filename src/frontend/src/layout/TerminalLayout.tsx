@@ -1,7 +1,8 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { Terminal, AlertTriangle } from 'lucide-react';
+import { Terminal, AlertTriangle, HelpCircle } from 'lucide-react';
 import { useBots } from '../api/client';
 import SystemHeader from '../components/SystemHeader';
+import HelpModal from '../components/HelpModal';
 
 export type View = 'registry' | 'feed' | 'standings' | 'gate';
 
@@ -20,6 +21,7 @@ interface TerminalLayoutProps {
 
 const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutProps) => {
   const [clock, setClock] = useState(new Date().toLocaleTimeString());
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const { data: bots } = useBots();
 
   useEffect(() => {
@@ -29,6 +31,10 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
 
   return (
     <div className="h-screen flex flex-col bg-terminal-deep text-zinc-400 font-mono overflow-hidden">
+      {/* CRT Scanlines Overlay */}
+      <div className="scanlines" />
+      <div className="scanline" />
+
       {/* System Warning Banner */}
       <div className="bg-alert-red/10 border-b border-alert-red/40 text-alert-red text-[9px] uppercase font-bold tracking-[0.2em] text-center py-1 flex items-center justify-center gap-2">
         <AlertTriangle size={9} />
@@ -40,13 +46,22 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       <header className="h-10 flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
-          <span className="text-neon-green font-bold">CLAWX TERMINAL</span>
-          <span className="text-zinc-700">v1.0.0</span>
+          <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
+          <span className="text-zinc-700">// v1.2</span>
         </div>
         <div className="flex items-center gap-4">
           <SystemHeader bots={bots} />
           <span className="text-zinc-700">|</span>
           <span className="text-zinc-600 font-mono">{clock}</span>
+          <span className="text-zinc-700">|</span>
+          <button
+            onClick={() => setIsHelpOpen(true)}
+            className="text-zinc-600 hover:text-neon-green transition-colors flex items-center gap-1"
+            title="System Manual"
+          >
+            <HelpCircle size={12} />
+            <span className="text-[9px] uppercase tracking-wider">MANUAL</span>
+          </button>
         </div>
       </header>
 
@@ -77,6 +92,9 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
         <span className="text-zinc-700">CONN: ARENA GW | DB: PG15 | TICKER: CONTINUOUS</span>
         <span className="text-zinc-700">ENTROPY: 0.50c/TICK | PHYSICS: ENFORCED | MATH: DECIMAL</span>
       </footer>
+
+      {/* Help Modal */}
+      {isHelpOpen && <HelpModal onClose={() => setIsHelpOpen(false)} />}
     </div>
   );
 };

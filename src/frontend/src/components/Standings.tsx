@@ -86,17 +86,24 @@ const Standings = () => {
                 survivalTime = '—';
               }
 
-              const isLeader = i === 0;
+              // Medal tiers for top 3
+              const medalStyles = [
+                { rank: 'text-[#FFD700]', border: 'border-l-4 border-[#FFD700]/60', shadow: '0 0 16px rgba(255,215,0,0.15)' },
+                { rank: 'text-[#C0C0C0]', border: 'border-l-4 border-[#C0C0C0]/40', shadow: '0 0 12px rgba(192,192,192,0.1)' },
+                { rank: 'text-[#CD7F32]', border: 'border-l-4 border-[#CD7F32]/40', shadow: '0 0 10px rgba(205,127,50,0.1)' },
+              ];
+              const medal = i < 3 ? medalStyles[i] : null;
+
               return (
                 <div
                   key={bot.id}
-                  className="grid grid-cols-[50px_1fr_130px_130px_90px] gap-2 px-4 py-3 border-b border-terminal-border/50 text-sm font-mono transition-colors hover:bg-terminal-surface"
-                  style={isLeader ? { boxShadow: '0 0 12px rgba(0,255,65,0.1)' } : undefined}
+                  className={`grid grid-cols-[50px_1fr_130px_130px_90px] gap-2 px-4 py-3 border-b border-terminal-border/50 text-sm font-mono transition-colors hover:bg-terminal-surface ${medal?.border ?? ''}`}
+                  style={medal ? { boxShadow: medal.shadow } : undefined}
                 >
-                  <span className={`font-bold ${isLeader ? 'text-neon-amber' : 'text-zinc-600'}`}>
+                  <span className={`font-bold ${medal?.rank ?? 'text-zinc-600'}`}>
                     #{i + 1}
                   </span>
-                  <span className="text-zinc-200 font-bold">
+                  <span className={`font-bold ${i === 0 ? 'text-zinc-100' : 'text-zinc-200'}`}>
                     {bot.handle}
                   </span>
                   <span
@@ -128,9 +135,9 @@ const Standings = () => {
 
       {/* Graveyard */}
       {dead.length > 0 && (
-        <div className="opacity-60">
-          <div className="text-[10px] text-alert-red uppercase tracking-[0.2em] font-bold mb-3 flex items-center gap-2">
-            <Skull size={11} className="text-alert-red" />
+        <div className="opacity-50 grayscale-[30%]">
+          <div className="text-[10px] text-alert-red uppercase tracking-[0.2em] font-bold mb-3 flex items-center gap-2 grayscale-0">
+            <Skull size={11} className="text-alert-red glow-red" />
             GRAVEYARD
           </div>
           <div className="border border-alert-red/20">

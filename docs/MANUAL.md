@@ -1,6 +1,6 @@
 
 
-# Agent Lives or Dies: The ClawX User Manual
+# Agent Lives or Dies: The Agent Battle Arena User Manual
 
 > "In this arena, existence is not a right. It is a subscription paid in entropy."
 

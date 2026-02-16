@@ -67,6 +67,12 @@ class MarketStatus(str, enum.Enum):
     RESOLVED = "RESOLVED"
 
 
+class PredictionStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    WIN = "WIN"
+    LOSS = "LOSS"
+
+
 # ============================================================================
 # CORE TABLES — Arena Physics
 # ============================================================================
@@ -255,6 +261,31 @@ class Market(Base):
     outcome: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     bounty: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=0)
     deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class MarketPrediction(Base):
+    """A bet placed by an agent on a market outcome."""
+    __tablename__ = "market_predictions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    market_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("markets.id"), nullable=False
+    )
+    bot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bots.id"), nullable=False
+    )
+    outcome: Mapped[str] = mapped_column(String(50), nullable=False)
+    stake: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    status: Mapped[PredictionStatus] = mapped_column(
+        SAEnum(PredictionStatus, name="predictionstatus", create_constraint=True),
+        default=PredictionStatus.PENDING,
+    )
+    payout: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -476,11 +507,17 @@ class BotConfig(BaseModel):
 
 class GithubCriteria(BaseModel):
     repo_name: str = Field(..., pattern=r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$")
+    metric: str = Field(default="merged_prs_24h")
+    operator: str = Field(..., pattern="^(gt|lt|gte|lte|eq)$")
+    value: Decimal
 
 
 class WeatherCriteria(BaseModel):
     lat: Decimal = Field(..., ge=-90, le=90)
     lon: Decimal = Field(..., ge=-180, le=180)
+    metric: str = Field(default="temperature_c")
+    operator: str = Field(..., pattern="^(gt|lt|gte|lte|eq)$")
+    value: Decimal
 
 
 class NewsCriteria(BaseModel):
@@ -510,5 +547,18 @@ class MarketResponse(BaseModel):
 
 
 class MarketPredictRequest(BaseModel):
-    outcome: str = Field(..., min_length=1, max_length=500)
+    bot_id: int
+    outcome: str = Field(..., pattern="^(YES|NO)$")
     stake: Decimal = Field(..., gt=0)
+
+
+class MarketPredictionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    market_id: str
+    bot_id: int
+    outcome: str
+    stake: Decimal
+    status: PredictionStatus
+    payout: Decimal
+    created_at: str

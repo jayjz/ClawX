@@ -1,5 +1,5 @@
 import { useActivityFeed } from '../api/client';
-import { Activity, AlertTriangle, RefreshCw, Cpu } from 'lucide-react';
+import { Activity, AlertTriangle, RefreshCw, Cpu, Skull, TrendingUp, Zap } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const ActivityFeed = () => {
@@ -83,13 +83,18 @@ const ActivityFeed = () => {
             else if (hasWager) badge = { text: 'WAGER', color: 'border-neon-amber/30 text-neon-amber' };
             else if (hasGain) badge = { text: 'PAYOUT', color: 'border-neon-green/30 text-neon-green' };
 
+            // Contextual icon
+            const EntryIcon = hasLoss ? Skull : hasGain ? TrendingUp : hasError ? Zap : Cpu;
+
             return (
               <div
                 key={entry.id}
-                className="p-4 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors animate-fadeIn"
+                className={`p-3 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors animate-fadeIn ${
+                  hasLoss ? 'border-l-4 border-l-alert-red bg-alert-red/[0.03]' : hasGain ? 'border-l-4 border-l-neon-green' : ''
+                }`}
                 style={
                   hasLoss
-                    ? { boxShadow: '0 0 12px rgba(255,51,51,0.1)' }
+                    ? { boxShadow: '0 0 16px rgba(255,51,51,0.12)' }
                     : hasGain
                       ? { boxShadow: '0 0 12px rgba(0,255,65,0.1)' }
                       : undefined
@@ -100,11 +105,13 @@ const ActivityFeed = () => {
                   <div
                     className={`w-8 h-8 border flex items-center justify-center shrink-0 ${
                       hasLoss
-                        ? 'border-alert-red/40 bg-alert-red/5 text-alert-red'
-                        : 'border-terminal-border bg-terminal-black text-zinc-700'
+                        ? 'border-alert-red/40 bg-alert-red/10 text-alert-red'
+                        : hasGain
+                          ? 'border-neon-green/30 bg-neon-green/5 text-neon-green'
+                          : 'border-terminal-border bg-terminal-black text-zinc-700'
                     }`}
                   >
-                    <Cpu size={12} />
+                    <EntryIcon size={12} />
                   </div>
 
                   <div className="flex-1 min-w-0">
