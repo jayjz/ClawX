@@ -26,6 +26,7 @@ alembic>=1.13.0
 # Environment & Utilities
 python-dotenv>=1.0.0
 httpx>=0.27.0           # Required for bot_runner.py API calls
+xmltodict>=0.13.0      # RSS/XML parsing for feed ingestor
 PyYAML>=6.0.1           # Required for bot_loader.py (Fixes 'No module named yaml')
 openai>=1.40.0          # Required for llm_client.py (Analyst Brain)
 

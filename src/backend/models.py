@@ -17,19 +17,25 @@ It does NOT contain:
   - Business logic or service functions
 """
 
+import enum
+import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Enum as SAEnum,
     Float,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
+    Uuid,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -43,6 +49,22 @@ from sqlalchemy.sql import func
 class Base(DeclarativeBase):
     """Shared declarative base for all ORM models."""
     pass
+
+
+# ============================================================================
+# ENUMS — Market System
+# ============================================================================
+
+class MarketSourceType(str, enum.Enum):
+    GITHUB = "GITHUB"
+    NEWS = "NEWS"
+    WEATHER = "WEATHER"
+
+
+class MarketStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    LOCKED = "LOCKED"
+    RESOLVED = "RESOLVED"
 
 
 # ============================================================================
@@ -197,6 +219,42 @@ class User(Base):
     username: Mapped[str] = mapped_column(String, unique=True)
     password_hash: Mapped[str] = mapped_column(String)
     balance: Mapped[float] = mapped_column(Numeric(18, 8), default=1000.0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ============================================================================
+# MARKET TABLES — Multi-Modal Data Markets
+# ============================================================================
+
+class Market(Base):
+    """
+    A verifiable market backed by real-world data sources.
+
+    source_type determines the resolution_criteria schema:
+      - GITHUB: {"repo_name": "owner/repo"}
+      - NEWS: {"feed_url": "https://...", "keyword": "..."}
+      - WEATHER: {"lat": 51.5, "lon": -0.12}
+    """
+    __tablename__ = "markets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_type: Mapped[MarketSourceType] = mapped_column(
+        SAEnum(MarketSourceType, name="marketsourcetype", create_constraint=True),
+        nullable=False,
+    )
+    resolution_criteria: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[MarketStatus] = mapped_column(
+        SAEnum(MarketStatus, name="marketstatus", create_constraint=True),
+        default=MarketStatus.OPEN,
+    )
+    outcome: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    bounty: Mapped[Decimal] = mapped_column(Numeric(18, 8), default=0)
+    deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -412,3 +470,45 @@ class BotConfig(BaseModel):
     memory_window: int = Field(default=3, ge=1, le=10)
     schedule: ScheduleConfig
     skills: List[SkillConfig] = Field(..., min_length=1)
+
+
+# --- Market Schemas (v1.2 — Multi-Modal Markets) ---
+
+class GithubCriteria(BaseModel):
+    repo_name: str = Field(..., pattern=r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$")
+
+
+class WeatherCriteria(BaseModel):
+    lat: Decimal = Field(..., ge=-90, le=90)
+    lon: Decimal = Field(..., ge=-180, le=180)
+
+
+class NewsCriteria(BaseModel):
+    feed_url: str = Field(..., min_length=10)
+    keyword: str = Field(..., min_length=1, max_length=100)
+
+
+class MarketCreate(BaseModel):
+    description: str = Field(..., min_length=5, max_length=500)
+    source_type: MarketSourceType
+    resolution_criteria: dict
+    bounty: Decimal = Decimal("0")
+    deadline: str  # ISO 8601 datetime
+
+
+class MarketResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    description: str
+    source_type: MarketSourceType
+    resolution_criteria: dict
+    status: MarketStatus
+    outcome: Optional[str] = None
+    bounty: Decimal
+    deadline: str
+    created_at: str
+
+
+class MarketPredictRequest(BaseModel):
+    outcome: str = Field(..., min_length=1, max_length=500)
+    stake: Decimal = Field(..., gt=0)
