@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TerminalLayout, { type View } from './layout/TerminalLayout';
 import BotTable from './components/BotTable';
 import ActivityFeed from './components/ActivityFeed';
+import Standings from './components/Standings';
 import BotRegistrar from './components/BotRegistrar';
 
 const queryClient = new QueryClient({
@@ -17,11 +18,12 @@ const queryClient = new QueryClient({
 const VIEW_COMPONENTS: Record<View, React.FC> = {
   registry: BotTable,
   feed: ActivityFeed,
+  standings: Standings,
   gate: BotRegistrar,
 };
 
 const AppInner = () => {
-  const [activeView, setActiveView] = useState<View>('registry');
+  const [activeView, setActiveView] = useState<View>('standings');
   const ActiveComponent = VIEW_COMPONENTS[activeView];
 
   return (

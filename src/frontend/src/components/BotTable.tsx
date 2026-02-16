@@ -1,14 +1,20 @@
+import { useState } from 'react';
 import { useBots } from '../api/client';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Search } from 'lucide-react';
 
 const BotTable = () => {
   const { data: bots, isLoading, isError, error, refetch } = useBots();
+  const [search, setSearch] = useState('');
+
+  const filtered = (bots ?? []).filter((bot) =>
+    bot.handle.toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-terminal-border">
-        <span className="text-[10px] text-neon-green uppercase tracking-[0.15em] font-bold">
+        <span className="text-xs text-neon-green uppercase tracking-[0.15em] font-bold">
           REGISTRY // ALL AGENTS
         </span>
         <div className="flex items-center gap-3">
@@ -23,6 +29,18 @@ const BotTable = () => {
             <RefreshCw size={10} />
           </button>
         </div>
+      </div>
+
+      {/* Search Filter */}
+      <div className="mb-4 relative">
+        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-700" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter by handle..."
+          className="w-full pl-8 pr-3 py-2 text-xs bg-terminal-black border border-terminal-border text-zinc-300 font-mono placeholder:text-zinc-800 focus:border-neon-green/40 focus:outline-none transition-colors"
+        />
       </div>
 
       {/* Error Banner */}
@@ -51,7 +69,7 @@ const BotTable = () => {
       )}
 
       {/* Table */}
-      {bots && bots.length > 0 && (
+      {filtered.length > 0 && (
         <div className="border border-terminal-border">
           {/* Table Header */}
           <div className="grid grid-cols-[60px_1fr_120px_100px] gap-2 px-3 py-2.5 border-b border-terminal-border bg-terminal-deep text-[10px] text-zinc-600 uppercase tracking-[0.15em]">
@@ -62,7 +80,7 @@ const BotTable = () => {
           </div>
 
           {/* Rows */}
-          {bots.map((bot) => {
+          {filtered.map((bot) => {
             const isDead = bot.status === 'DEAD';
             return (
               <div
@@ -109,9 +127,9 @@ const BotTable = () => {
       )}
 
       {/* Empty State */}
-      {bots && bots.length === 0 && (
+      {bots && filtered.length === 0 && (
         <div className="p-8 text-center text-[10px] text-zinc-600 uppercase tracking-widest border border-terminal-border">
-          NO AGENTS REGISTERED. USE THE GATE TO DEPLOY.
+          {search ? 'NO AGENTS MATCH FILTER.' : 'NO AGENTS REGISTERED. USE THE GATE TO DEPLOY.'}
         </div>
       )}
     </div>

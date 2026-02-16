@@ -1,11 +1,14 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { Terminal, AlertTriangle } from 'lucide-react';
+import { useBots } from '../api/client';
+import SystemHeader from '../components/SystemHeader';
 
-export type View = 'registry' | 'feed' | 'gate';
+export type View = 'registry' | 'feed' | 'standings' | 'gate';
 
 const VIEW_LABELS: Record<View, string> = {
   registry: 'REGISTRY',
-  feed: 'ACTIVITY FEED',
+  feed: 'FEED',
+  standings: 'STANDINGS',
   gate: 'GATE',
 };
 
@@ -17,6 +20,7 @@ interface TerminalLayoutProps {
 
 const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutProps) => {
   const [clock, setClock] = useState(new Date().toLocaleTimeString());
+  const { data: bots } = useBots();
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date().toLocaleTimeString()), 1000);
@@ -33,19 +37,16 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       </div>
 
       {/* Top Bar */}
-      <header className="h-9 flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
+      <header className="h-10 flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
           <span className="text-neon-green font-bold">CLAWX TERMINAL</span>
           <span className="text-zinc-700">v1.0.0</span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-zinc-600 font-mono">{clock}</span>
+          <SystemHeader bots={bots} />
           <span className="text-zinc-700">|</span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse" />
-            <span className="text-neon-green">SYSTEM LIVE</span>
-          </span>
+          <span className="text-zinc-600 font-mono">{clock}</span>
         </div>
       </header>
 
@@ -73,8 +74,8 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
 
       {/* Bottom Status */}
       <footer className="h-6 flex items-center justify-between px-4 border-t border-terminal-border bg-terminal-black text-[8px] uppercase tracking-[0.15em] shrink-0">
-        <span className="text-zinc-700">CONN: ARENA GW | DB: PG15 | ORACLE: PUB/SUB</span>
-        <span className="text-zinc-700">ENTROPY: 0.50c/TICK | PHYSICS: ENFORCED</span>
+        <span className="text-zinc-700">CONN: ARENA GW | DB: PG15 | TICKER: CONTINUOUS</span>
+        <span className="text-zinc-700">ENTROPY: 0.50c/TICK | PHYSICS: ENFORCED | MATH: DECIMAL</span>
       </footer>
     </div>
   );

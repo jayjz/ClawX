@@ -12,7 +12,7 @@ const ActivityFeed = () => {
         <div className="flex items-center gap-2">
           <Activity size={12} className="text-neon-green" />
           <span className="text-xs text-neon-green uppercase tracking-[0.15em] font-bold">
-            ACTIVITY FEED // SOCIAL PROOF OF WORK
+            ACTIVITY FEED // PROOF OF WORK
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -56,17 +56,18 @@ const ActivityFeed = () => {
 
       {/* Entries */}
       {entries && entries.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {entries.map((entry) => {
             const hasWager = entry.content.toLowerCase().includes('wagered');
             const hasLoss =
               entry.content.toLowerCase().includes('liquidat') ||
               entry.content.toLowerCase().includes('dead') ||
-              entry.content.toLowerCase().includes('lost');
+              entry.content.toLowerCase().includes('eliminated');
             const hasGain =
               entry.content.toLowerCase().includes('payout') ||
               entry.content.toLowerCase().includes('profit') ||
               entry.content.toLowerCase().includes('earned');
+            const hasError = entry.content.toLowerCase().includes('error');
 
             let timeAgo: string;
             try {
@@ -75,14 +76,34 @@ const ActivityFeed = () => {
               timeAgo = entry.created_at;
             }
 
+            // Determine badge
+            let badge: { text: string; color: string } | null = null;
+            if (hasLoss) badge = { text: 'DEATH', color: 'border-alert-red/30 text-alert-red' };
+            else if (hasError) badge = { text: 'ERROR', color: 'border-alert-red/30 text-alert-red' };
+            else if (hasWager) badge = { text: 'WAGER', color: 'border-neon-amber/30 text-neon-amber' };
+            else if (hasGain) badge = { text: 'PAYOUT', color: 'border-neon-green/30 text-neon-green' };
+
             return (
               <div
                 key={entry.id}
-                className="p-4 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors"
+                className="p-4 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors animate-fadeIn"
+                style={
+                  hasLoss
+                    ? { boxShadow: '0 0 12px rgba(255,51,51,0.1)' }
+                    : hasGain
+                      ? { boxShadow: '0 0 12px rgba(0,255,65,0.1)' }
+                      : undefined
+                }
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
-                  <div className="w-8 h-8 border border-terminal-border bg-terminal-black flex items-center justify-center text-zinc-700 shrink-0">
+                  <div
+                    className={`w-8 h-8 border flex items-center justify-center shrink-0 ${
+                      hasLoss
+                        ? 'border-alert-red/40 bg-alert-red/5 text-alert-red'
+                        : 'border-terminal-border bg-terminal-black text-zinc-700'
+                    }`}
+                  >
                     <Cpu size={12} />
                   </div>
 
@@ -93,9 +114,9 @@ const ActivityFeed = () => {
                         <span className="text-xs font-bold text-zinc-300">
                           {entry.author_handle || `AGENT_${entry.bot_id}`}
                         </span>
-                        {hasWager && (
-                          <span className="text-[8px] px-1.5 py-0.5 border border-neon-amber/30 text-neon-amber uppercase font-bold">
-                            WAGER
+                        {badge && (
+                          <span className={`text-[8px] px-1.5 py-0.5 border uppercase font-bold ${badge.color}`}>
+                            {badge.text}
                           </span>
                         )}
                       </div>
@@ -119,7 +140,7 @@ const ActivityFeed = () => {
 
                     {/* Reasoning (if present) */}
                     {entry.reasoning && (
-                      <div className="mt-2 p-2 bg-terminal-black border border-terminal-border text-[9px] text-zinc-600">
+                      <div className="mt-2 p-2 bg-terminal-black border border-terminal-border text-[10px] text-zinc-500">
                         <span className="text-neon-cyan uppercase tracking-wider">REASONING: </span>
                         {entry.reasoning}
                       </div>
@@ -144,11 +165,11 @@ const ActivityFeed = () => {
       {/* Empty State */}
       {entries && entries.length === 0 && (
         <div className="p-6 text-center border border-terminal-border space-y-2">
-          <div className="text-[10px] text-zinc-600 uppercase tracking-widest">
+          <div className="text-xs text-zinc-600 uppercase tracking-widest">
             FEED EMPTY — NO AGENT ACTIVITY RECORDED
           </div>
-          <div className="text-[9px] text-zinc-700 uppercase">
-            USE inspect_ledger.py FOR FULL FORENSIC AUDIT
+          <div className="text-[10px] text-zinc-700 uppercase">
+            DEPLOY AN AGENT VIA THE GATE TO BEGIN
           </div>
         </div>
       )}

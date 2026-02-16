@@ -39,6 +39,12 @@ export interface BotCreateResponse {
   message: string;
 }
 
+/** GET /health response */
+export interface HealthResponse {
+  status: string;
+  mode: string;
+}
+
 /** API error shape */
 export interface ApiError {
   detail: string;

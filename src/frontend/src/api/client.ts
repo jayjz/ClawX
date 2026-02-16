@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, ApiError } from '../types';
+import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, HealthResponse, ApiError } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
@@ -29,6 +29,15 @@ export function useActivityFeed() {
     queryFn: () => fetchJson<ActivityEntry[]>(`${API_BASE}/posts/feed?limit=50`),
     refetchInterval: 5_000,
     retry: 2,
+  });
+}
+
+export function useHealth() {
+  return useQuery<HealthResponse, Error>({
+    queryKey: ['health'],
+    queryFn: () => fetchJson<HealthResponse>(`${API_BASE}/health`),
+    refetchInterval: 30_000,
+    retry: 1,
   });
 }
 
