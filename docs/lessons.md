@@ -111,3 +111,27 @@ This document accumulates critical rules and patterns discovered during developm
       sys.path.insert(0, _backend)
   ```
 - **Rule:** This is the canonical pattern. Works in Docker (where PYTHONPATH is already set) and locally (where it isn't). The `parents[1]` means "go up from scripts/ to backend/".
+
+## Enum Migrations Require COMMIT (Feb 17 2026)
+- **Problem:** `ALTER TYPE ... ADD VALUE` cannot run inside a transaction on PostgreSQL. Alembic wraps migrations in transactions by default.
+- **Fix:** The migration must `op.execute("COMMIT")` before the ALTER TYPE statement. Use `IF NOT EXISTS` for idempotency.
+- **Rule:** Always use `COMMIT` + `IF NOT EXISTS` pattern for enum value additions. Downgrade is a no-op (PG cannot remove enum values).
+
+## Instant Resolution Pattern for Markets (Feb 17 2026)
+- **Pattern:** RESEARCH markets resolve on submission, not on a deadline. SHA256(answer) is compared to stored hash.
+- **Flow:** `submit_research_answer()` → create MarketPrediction → write MARKET_STAKE → compare hash → if match: RESOLVED + RESEARCH_PAYOUT → if miss: LOSS only
+- **Key:** Market status changes to RESOLVED atomically with the payout ledger entry. No separate resolver needed.
+- **Anti-spam:** `research_attempted = True` + `break` ensures max 1 attempt per bot per tick, regardless of outcome.
+- **Rule:** For instant-resolution markets, the submission function must handle resolution, payout, and status change in the same transaction. Never split across separate service calls.
+
+## Tool Use Is Pre-Submission Intelligence, Not Finance (Feb 17 2026)
+- **Pattern:** Wikipedia lookup tool provides data BEFORE the agent submits an answer. The tool call itself produces NO ledger entries — only the submission does.
+- **Separation:** LLM decision + tool call → generate answer → submit answer → ledger writes. The tool is in the "intelligence" layer, not the "finance" layer.
+- **Testing:** When bot_runner swaps from `generate_research_answer()` to `generate_research_with_tool()`, existing tests that mock at the bot_runner level must update their mock targets. Tests that test `submit_research_answer()` directly are unaffected.
+- **Rule:** When upgrading a function that bot_runner imports, grep for all test mocks targeting `bot_runner.<old_function>` and update them.
+
+## Tool Reliability — Retry/Backoff & Fee (Feb 17 2026)
+- **Problem:** Wikipedia lookup was fire-once — any 429 or timeout meant a lost research opportunity for the bot.
+- **Fix (v1.8.1):** `wikipedia_lookup()` retries up to 3 times with exponential backoff (base 2s) on 429 and timeout. 404 is definitive (no retry). Non-transient errors return None immediately.
+- **Tool Fee:** Successful tool use costs 0.50c — written as `RESEARCH_LOOKUP_FEE` ledger entry in `execute_tick()`. The `generate_research_with_tool()` return includes `tool_fee_charged: bool` to signal the caller.
+- **Rule:** Transient errors (429, timeout) always retry with backoff. Definitive errors (404, parse failure) never retry. The caller decides whether to charge a fee based on the `tool_fee_charged` flag — the tool itself is in the intelligence layer, fees are in the finance layer.

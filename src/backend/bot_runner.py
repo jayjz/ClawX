@@ -1,21 +1,26 @@
-"""Autonomous bot runner for ClawdXCraft — Write or Die Edition.
+"""Autonomous bot runner for ClawdXCraft — Write or Die Edition (v1.8.1).
 
 Contract of Behavior:
-  Every tick of the bot loop produces EXACTLY ONE ledger entry.
+  Every tick produces AT LEAST ONE ledger entry.
   No silent failures. No invisible skips. No free existence.
 
-  | Outcome              | Ledger Type  | Amount              | Reference                      |
-  |----------------------|------------- |---------------------|--------------------------------|
-  | Bot places a WAGER   | WAGER        | -(ENTROPY_FEE + N)  | TICK:{tick_id}                 |
-  | Bot decides not to act| HEARTBEAT   | -ENTROPY_FEE        | TICK:{tick_id}                 |
-  | LLM/API error        | HEARTBEAT    | -ENTROPY_FEE        | TICK:{tick_id}:ERROR:{reason}  |
-  | Balance < fee        | LIQUIDATION  | 0.0                 | TICK:{tick_id}:LIQUIDATION     |
-  | Bot is DEAD          | (no tick)    | —                   | —                              |
+  | Outcome                | Ledger Types                              | Amounts                              |
+  |------------------------|-------------------------------------------|--------------------------------------|
+  | Research+tool (correct)| MARKET_STAKE + LOOKUP_FEE + RESEARCH_PAYOUT| -1.00 + -0.50 + bounty(15.00)       |
+  | Research+tool (wrong)  | MARKET_STAKE + LOOKUP_FEE + HEARTBEAT     | -1.00 + -0.50 + -ENTROPY_FEE        |
+  | Research (no tool)     | MARKET_STAKE + HEARTBEAT                  | -1.00 + -ENTROPY_FEE                |
+  | Portfolio (N bets)     | N×MARKET_STAKE + HBEAT          | -stake each + -ENTROPY_FEE     |
+  | Legacy single WAGER    | WAGER                           | -(ENTROPY_FEE + wager)         |
+  | Bot decides not to act | HEARTBEAT                       | -ENTROPY_FEE                   |
+  | LLM/API error          | HEARTBEAT                       | -ENTROPY_FEE                   |
+  | Balance < fee          | LIQUIDATION                     | -(remaining)                   |
+  | Bot is DEAD            | (no tick)                       | —                              |
 
 Constitutional references:
   - CLAUDE.md Invariant #1: Inaction is costly — ENTROPY_FEE enforces this
+  - CLAUDE.md Invariant #2: Write or Die — every state change = ledger entry
+  - CLAUDE.md Invariant #3: Decimal Purity — all money math uses Decimal
   - CLAUDE.md Invariant #4: Irreversible loss — all entries hash-chained
-  - lessons.md: All money through ledger, no ghost methods
 
 Usage:
     python bot_runner.py /path/to/bot.yaml
@@ -34,9 +39,10 @@ import httpx
 
 from bot_loader import load_bot_config
 from database import async_session_maker
-from llm_client import generate_prediction
+from llm_client import generate_portfolio_decision, generate_prediction, generate_research_answer, generate_research_with_tool
 from models import Bot, Post
-from services.ledger_service import append_ledger_entry
+from services.ledger_service import append_ledger_entry, get_balance
+from services.market_service import get_active_markets_for_agent, place_market_bet, submit_research_answer
 from sqlalchemy import select
 from thread_memory import get_redis_client
 
@@ -47,6 +53,18 @@ TOKEN_REFRESH_SECONDS = 25 * 60  # refresh before 30-min JWT expiry
 # Every tick costs this much. No exceptions. No free existence.
 # At 1000 credits and 60s ticks, a heartbeat-only bot survives ~2000 ticks (~33 hours).
 ENTROPY_FEE = Decimal('0.50')
+
+# === PORTFOLIO STRATEGY LIMITS (v1.6) ===
+MAX_MARKETS_PER_TICK = 3
+MAX_TOTAL_STAKE_RATIO = Decimal('0.20')   # 20% of balance
+CONFIDENCE_FLOOR = Decimal('0.65')
+STAKE_COEFFICIENT = Decimal('0.15')        # stake = balance * confidence * 0.15
+MIN_PORTFOLIO_BALANCE = Decimal('5.0')     # minimum balance to attempt portfolio
+
+# === RESEARCH LIMITS (v1.7, v1.8.1) ===
+RESEARCH_STAKE = Decimal('1.00')           # fixed stake for research attempts
+RESEARCH_CONFIDENCE_FLOOR = Decimal('0.50')  # lower bar than binary bets
+TOOL_LOOKUP_FEE = Decimal('0.50')          # v1.8.1: surcharge per Wikipedia lookup
 
 logger = logging.getLogger("bot_runner")
 
@@ -63,26 +81,27 @@ async def execute_tick(
     http_client: httpx.AsyncClient | None = None,
     http_headers: dict | None = None,
 ) -> str:
-    """Execute exactly one tick for a bot. Guarantees exactly one ledger entry.
+    """Execute one tick for a bot. Guarantees at least one ledger entry.
 
-    The entropy fee is charged BEFORE agent logic. Existence has a cost.
+    v1.6: Portfolio strategy — multiple MARKET_STAKE entries per tick,
+    with a HEARTBEAT for entropy always appended.
 
     Args:
         bot_id: The bot's database ID.
         config: Validated bot config dict (from bot_loader).
-        balance: Current bot balance (informational — DB is re-read for truth).
+        balance: Current bot balance (informational — ledger is re-read for truth).
         http_client: Optional httpx client for posting social content.
         http_headers: Optional auth headers for HTTP calls.
 
     Returns:
-        The transaction_type written ("WAGER", "HEARTBEAT", or "LIQUIDATION").
+        The tick outcome: "RESEARCH", "PORTFOLIO", "WAGER", "HEARTBEAT", or "LIQUIDATION".
     """
     tick_id = str(uuid.uuid4())
     ledger_written = False
 
     async with async_session_maker() as session:
         try:
-            # === STEP 0: Load authoritative bot state from DB ===
+            # === STEP 0: Load bot + authoritative balance from ledger ===
             result = await session.execute(
                 select(Bot).where(Bot.id == bot_id)
             )
@@ -92,12 +111,11 @@ async def execute_tick(
                 logger.info("TICK %s: SKIP bot_id=%d (DEAD or missing)", tick_id[:8], bot_id)
                 return "HEARTBEAT"  # No ledger write for dead bots
 
-            # Convert DB balance to Decimal for exact math
-            current_balance = Decimal(str(bot.balance))
+            # Ledger sum is the ONLY source of balance truth
+            current_balance = await get_balance(bot_id=bot_id, session=session)
 
             # === STEP 1: LIQUIDATION CHECK — can the bot afford to exist? ===
             if current_balance < ENTROPY_FEE:
-                # CRITICAL FIX: drain exact remaining balance, not 0.0
                 drain_amount = -current_balance
                 bot.status = "DEAD"
                 bot.balance = Decimal('0')
@@ -112,7 +130,6 @@ async def execute_tick(
                 )
                 ledger_written = True
 
-                # Feed post: LIQUIDATION (meaningful event)
                 session.add(Post(
                     bot_id=bot_id,
                     content=f"LIQUIDATED. Balance reached {current_balance:.2f}c. Eliminated from the arena. Irreversible."[:280],
@@ -125,65 +142,226 @@ async def execute_tick(
                 )
                 return "LIQUIDATION"
 
-            # === STEP 2: Attempt prediction via LLM ===
-            market_context = "Crypto markets are active. BTC direction unclear."
-            btc_price = None
+            # === STEP 1.5 (v1.7): RESEARCH — Proof-of-Retrieval scavenger hunt ===
+            research_attempted = False
+            research_market_ids = set()  # track to skip in portfolio
 
             try:
-                redis = await get_redis_client()
-                if redis:
-                    price_str = await redis.get("market:price:btc")
-                    if price_str:
-                        btc_price = float(price_str)
-                        market_context = f"Bitcoin is currently trading at ${btc_price:,.2f} USD."
-            except Exception:
-                pass  # Redis unavailable — use fallback context
+                if current_balance >= ENTROPY_FEE + RESEARCH_STAKE:
+                    all_markets = await get_active_markets_for_agent(
+                        bot_id=bot_id, session=session, limit=10,
+                    )
 
-            prediction = await generate_prediction(
-                config.get("persona", "Arena agent"),
-                market_context,
-                float(current_balance),
-            )
+                    for mkt in all_markets:
+                        if mkt.get("source_type") == "RESEARCH" and not research_attempted:
+                            research_market_ids.add(mkt["id"])
+                            # v1.8: Tool-enabled research — uses Wikipedia lookup when LLM unsure
+                            answer_data = await generate_research_with_tool(
+                                persona=config.get("persona", "Arena agent"),
+                                question=mkt["description"],
+                                balance=float(current_balance),
+                            )
 
-            # === STEP 3: WAGER or HEARTBEAT ===
-            min_wager_balance = ENTROPY_FEE + Decimal('5.0')
-            if prediction and current_balance >= min_wager_balance:
-                # Wager: capped at 10% of (balance minus fee)
-                available = current_balance - ENTROPY_FEE
-                raw_wager = Decimal(str(prediction["wager_amount"]))
-                wager = min(raw_wager, available * Decimal('0.1'))
-                wager = max(wager, Decimal('0.01'))  # floor
-                total_cost = ENTROPY_FEE + wager
+                            if answer_data and Decimal(str(answer_data["confidence"])) > RESEARCH_CONFIDENCE_FLOOR:
+                                pred, result = await submit_research_answer(
+                                    bot_id=bot_id,
+                                    market_id=mkt["id"],
+                                    answer=answer_data["answer"],
+                                    stake=RESEARCH_STAKE,
+                                    tick_id=tick_id,
+                                    session=session,
+                                )
+                                research_attempted = True
+                                ledger_written = True
 
-                bot.balance = current_balance - total_cost
-                bot.last_action_at = datetime.now(timezone.utc)
+                                used_tool = answer_data.get("used_tool", False)
+                                tool_fee_charged = answer_data.get("tool_fee_charged", False)
+                                tool_tag = " [TOOL]" if used_tool else ""
 
-                await append_ledger_entry(
-                    bot_id=bot_id,
-                    amount=float(-total_cost),
-                    transaction_type="WAGER",
-                    reference_id=f"TICK:{tick_id}",
-                    session=session,
+                                # v1.8.1: Charge tool lookup fee when Wikipedia was used
+                                if tool_fee_charged:
+                                    await append_ledger_entry(
+                                        bot_id=bot_id,
+                                        amount=float(-TOOL_LOOKUP_FEE),
+                                        transaction_type="RESEARCH_LOOKUP_FEE",
+                                        reference_id=f"TICK:{tick_id}:TOOL_FEE",
+                                        session=session,
+                                    )
+                                    logger.info(
+                                        "TICK %s: RESEARCH_LOOKUP_FEE bot_id=%d fee=%s",
+                                        tick_id[:8], bot_id, TOOL_LOOKUP_FEE,
+                                    )
+
+                                if result == "CORRECT":
+                                    session.add(Post(
+                                        bot_id=bot_id,
+                                        content=f"RESEARCH SOLVED{tool_tag}: {mkt['description'][:70]}... | Bounty claimed!"[:280],
+                                    ))
+                                    logger.info(
+                                        "TICK %s: RESEARCH_WIN bot_id=%d market=%s used_tool=%s",
+                                        tick_id[:8], bot_id, mkt["id"], used_tool,
+                                    )
+                                elif result == "WRONG":
+                                    session.add(Post(
+                                        bot_id=bot_id,
+                                        content=f"RESEARCH MISS{tool_tag}: {mkt['description'][:80]}... | Wrong answer."[:280],
+                                    ))
+                                    logger.info(
+                                        "TICK %s: RESEARCH_MISS bot_id=%d market=%s used_tool=%s",
+                                        tick_id[:8], bot_id, mkt["id"], used_tool,
+                                    )
+                            break  # max 1 research attempt per tick regardless
+                        elif mkt.get("source_type") == "RESEARCH":
+                            research_market_ids.add(mkt["id"])
+            except Exception as research_exc:
+                logger.warning(
+                    "TICK %s: Research attempt failed: %s",
+                    tick_id[:8], research_exc,
                 )
-                ledger_written = True
 
-                # Feed post: WAGER (meaningful event — atomic, same transaction)
-                direction = prediction.get("direction", "UP")
-                reasoning = prediction.get("reasoning", "Trust the data.")
-                session.add(Post(
-                    bot_id=bot_id,
-                    content=f"Wagered {wager:.2f}c on {direction}. {reasoning}"[:280],
-                ))
+            # Re-read balance after potential research payout
+            if research_attempted:
+                current_balance = await get_balance(bot_id=bot_id, session=session)
 
-                await session.commit()
-                logger.info(
-                    "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
-                    tick_id[:8], bot_id, ENTROPY_FEE, wager, total_cost,
+            # === STEP 2 (v1.6): Portfolio Strategy — multi-market bets ===
+            available_after_fee = current_balance - ENTROPY_FEE
+            max_total_stake = available_after_fee * MAX_TOTAL_STAKE_RATIO
+            total_staked = Decimal('0')
+            bets_placed = 0
+
+            try:
+                if current_balance >= MIN_PORTFOLIO_BALANCE:
+                    # Filter out RESEARCH markets (already handled above)
+                    markets = [
+                        m for m in await get_active_markets_for_agent(
+                            bot_id=bot_id, session=session, limit=10,
+                        )
+                        if m["id"] not in research_market_ids
+                    ]
+
+                    if markets:
+                        portfolio = await generate_portfolio_decision(
+                            persona=config.get("persona", "Arena agent"),
+                            markets=markets,
+                            balance=float(current_balance),
+                            max_bets=MAX_MARKETS_PER_TICK,
+                        )
+
+                        if portfolio:
+                            for bet in portfolio:
+                                if bets_placed >= MAX_MARKETS_PER_TICK:
+                                    break
+
+                                confidence = Decimal(str(bet["confidence"]))
+                                if confidence <= CONFIDENCE_FLOOR:
+                                    continue
+
+                                # stake = balance * confidence * 0.15, capped at remaining budget
+                                raw_stake = current_balance * confidence * STAKE_COEFFICIENT
+                                remaining_budget = max_total_stake - total_staked
+                                if remaining_budget <= Decimal('0.01'):
+                                    break
+
+                                stake = min(raw_stake, remaining_budget)
+                                stake = max(stake, Decimal('0.01'))
+
+                                try:
+                                    await place_market_bet(
+                                        bot_id=bot_id,
+                                        market_id=bet["market_id"],
+                                        outcome=bet["outcome"],
+                                        stake=stake,
+                                        tick_id=tick_id,
+                                        session=session,
+                                    )
+                                    total_staked += stake
+                                    bets_placed += 1
+                                    ledger_written = True
+
+                                    session.add(Post(
+                                        bot_id=bot_id,
+                                        content=(
+                                            f"MARKET BET: {bet['outcome']} on "
+                                            f"{bet.get('reasoning', 'analysis')[:60]} "
+                                            f"| Stake: {stake:.2f}c"
+                                        )[:280],
+                                    ))
+                                except ValueError as ve:
+                                    logger.warning(
+                                        "TICK %s: Market bet rejected: %s",
+                                        tick_id[:8], ve,
+                                    )
+                                    continue
+
+            except Exception as market_exc:
+                logger.warning(
+                    "TICK %s: Portfolio strategy failed, falling back: %s",
+                    tick_id[:8], market_exc,
                 )
-                return "WAGER"
+                # Fall through to legacy single-bet path
 
-            # No wager — HEARTBEAT with entropy fee (NO feed post — silence is golden)
-            bot.balance = current_balance - ENTROPY_FEE
+            # === STEP 3: Legacy single-bet fallback (only if no market bets placed) ===
+            if bets_placed == 0:
+                market_context = "Crypto markets are active. BTC direction unclear."
+                btc_price = None
+
+                try:
+                    redis = await get_redis_client()
+                    if redis:
+                        price_str = await redis.get("market:price:btc")
+                        if price_str:
+                            btc_price = float(price_str)
+                            market_context = f"Bitcoin is currently trading at ${btc_price:,.2f} USD."
+                except Exception:
+                    pass
+
+                prediction = await generate_prediction(
+                    config.get("persona", "Arena agent"),
+                    market_context,
+                    float(current_balance),
+                )
+
+                min_wager_balance = ENTROPY_FEE + Decimal('5.0')
+                if prediction and current_balance >= min_wager_balance:
+                    available = current_balance - ENTROPY_FEE
+                    raw_wager = Decimal(str(prediction["wager_amount"]))
+                    wager = min(raw_wager, available * Decimal('0.1'))
+                    wager = max(wager, Decimal('0.01'))
+                    total_cost = ENTROPY_FEE + wager
+
+                    bot.balance = current_balance - total_cost
+                    bot.last_action_at = datetime.now(timezone.utc)
+
+                    await append_ledger_entry(
+                        bot_id=bot_id,
+                        amount=float(-total_cost),
+                        transaction_type="WAGER",
+                        reference_id=f"TICK:{tick_id}",
+                        session=session,
+                    )
+                    ledger_written = True
+
+                    direction = prediction.get("direction", "UP")
+                    reasoning = prediction.get("reasoning", "Trust the data.")
+                    session.add(Post(
+                        bot_id=bot_id,
+                        content=f"Wagered {wager:.2f}c on {direction}. {reasoning}"[:280],
+                    ))
+
+                    await session.commit()
+                    logger.info(
+                        "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
+                        tick_id[:8], bot_id, ENTROPY_FEE, wager, total_cost,
+                    )
+                    return "WAGER"
+
+            # === STEP 4: HEARTBEAT (entropy charge — ALWAYS runs) ===
+            # If portfolio bets were placed, this is the entropy surcharge.
+            # If no bets, this is the standard heartbeat.
+            # Re-read balance if research changed it
+            if research_attempted:
+                current_balance = await get_balance(bot_id=bot_id, session=session)
+            bot.balance = current_balance - ENTROPY_FEE - total_staked
             bot.last_action_at = datetime.now(timezone.utc)
 
             await append_ledger_entry(
@@ -195,6 +373,21 @@ async def execute_tick(
             )
             ledger_written = True
             await session.commit()
+
+            if bets_placed > 0:
+                logger.info(
+                    "TICK %s: PORTFOLIO bot_id=%d bets=%d staked=%s fee=%s",
+                    tick_id[:8], bot_id, bets_placed, total_staked, ENTROPY_FEE,
+                )
+                return "PORTFOLIO"
+
+            if research_attempted:
+                logger.info(
+                    "TICK %s: RESEARCH bot_id=%d fee=%s",
+                    tick_id[:8], bot_id, ENTROPY_FEE,
+                )
+                return "RESEARCH"
+
             logger.info(
                 "TICK %s: HEARTBEAT bot_id=%d fee=%s",
                 tick_id[:8], bot_id, ENTROPY_FEE,
@@ -234,7 +427,6 @@ async def execute_tick(
                                 session=err_session,
                             )
 
-                            # Feed post: ERROR (meaningful event)
                             err_session.add(Post(
                                 bot_id=bot_id,
                                 content=f"System error during tick: {reason}. Entropy fee charged."[:280],

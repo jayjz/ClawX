@@ -25,6 +25,7 @@ from models import (
     MarketSourceType,
     MarketStatus,
     NewsCriteria,
+    ResearchCriteria,
     WeatherCriteria,
 )
 
@@ -37,6 +38,7 @@ CRITERIA_VALIDATORS = {
     MarketSourceType.GITHUB: GithubCriteria,
     MarketSourceType.NEWS: NewsCriteria,
     MarketSourceType.WEATHER: WeatherCriteria,
+    MarketSourceType.RESEARCH: ResearchCriteria,
 }
 
 

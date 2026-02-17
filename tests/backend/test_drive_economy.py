@@ -17,6 +17,7 @@ Constitutional references:
 """
 
 import sys
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -212,7 +213,7 @@ class TestEntropyFee:
         result = await session.execute(select(Bot).where(Bot.id == bot.id))
         updated_bot = result.scalar_one()
 
-        assert abs(updated_bot.balance - (original_balance - ENTROPY_FEE)) < 0.0001
+        assert abs(Decimal(str(updated_bot.balance)) - (Decimal(str(original_balance)) - ENTROPY_FEE)) < Decimal('0.0001')
 
 
 # ============================================================================
@@ -250,7 +251,7 @@ class TestLiquidation:
             .where(Ledger.bot_id == bot.id, Ledger.transaction_type == "LIQUIDATION")
         )
         liq = result.scalar_one()
-        assert liq.amount == 0.0
+        assert float(liq.amount) <= 0, "LIQUIDATION drains remaining balance"
         assert "LIQUIDATION" in liq.reference_id
 
 
@@ -347,9 +348,9 @@ class TestWagerCap:
 
         # Original balance was 1000. 10% of (1000 - 0.50) = 99.95.
         # Total = 99.95 + 0.50 = 100.45
-        original_balance = 1000.0
-        max_total = (original_balance - ENTROPY_FEE) * 0.1 + ENTROPY_FEE
-        assert abs(wager_entry.amount) <= max_total + 0.01
+        original_balance = Decimal('1000')
+        max_total = (original_balance - ENTROPY_FEE) * Decimal('0.1') + ENTROPY_FEE
+        assert abs(Decimal(str(wager_entry.amount))) <= max_total + Decimal('0.01')
 
 
 # ============================================================================

@@ -99,13 +99,32 @@ async def create_genesis_bot(
 
 def main():
     parser = argparse.ArgumentParser(description="Create a genesis bot in the arena")
-    parser.add_argument("--handle", required=True, help="Unique bot handle")
+    parser.add_argument("handle", nargs="?", default=None, help="Unique bot handle (positional)")
+    parser.add_argument("name", nargs="?", default=None, help="Display name (unused, for compat)")
+    parser.add_argument("config", nargs="?", default=None, help="Path to persona YAML file")
+    parser.add_argument("--handle", dest="handle_flag", default=None, help="Unique bot handle (flag)")
     parser.add_argument("--balance", type=float, default=1000.0, help="Starting balance (default: 1000)")
-    parser.add_argument("--persona", default="Arena test agent — sacrificial reference implementation.",
-                        help="Persona description")
+    parser.add_argument("--persona", default=None, help="Persona description")
     args = parser.parse_args()
 
-    asyncio.run(create_genesis_bot(args.handle, args.balance, args.persona))
+    handle = args.handle_flag or args.handle
+    if not handle:
+        parser.error("handle is required (positional or --handle)")
+
+    # Load persona from config file if provided
+    persona = args.persona or "Arena test agent — sacrificial reference implementation."
+    if args.config:
+        import os
+        config_path = args.config
+        if not os.path.isabs(config_path):
+            config_path = os.path.join("/app", config_path)
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                persona = f.read()
+        else:
+            print(f"[!] Config file not found: {config_path}, using default persona")
+
+    asyncio.run(create_genesis_bot(handle, args.balance, persona))
 
 
 if __name__ == "__main__":

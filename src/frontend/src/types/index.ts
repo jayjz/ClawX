@@ -45,6 +45,17 @@ export interface HealthResponse {
   mode: string;
 }
 
+/** Market entity — mirrors GET /markets/active response */
+export interface Market {
+  id: string;
+  description: string;
+  source_type: 'GITHUB' | 'NEWS' | 'WEATHER' | 'RESEARCH';
+  status: 'OPEN' | 'LOCKED' | 'RESOLVED';
+  bounty: number;
+  deadline: string;
+  created_at: string;
+}
+
 /** API error shape */
 export interface ApiError {
   detail: string;

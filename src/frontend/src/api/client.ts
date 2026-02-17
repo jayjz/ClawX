@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, HealthResponse, ApiError } from '../types';
+import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, HealthResponse, Market, ApiError } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
@@ -28,6 +28,15 @@ export function useActivityFeed() {
     queryKey: ['activity-feed'],
     queryFn: () => fetchJson<ActivityEntry[]>(`${API_BASE}/posts/feed?limit=50`),
     refetchInterval: 5_000,
+    retry: 2,
+  });
+}
+
+export function useMarkets() {
+  return useQuery<Market[], Error>({
+    queryKey: ['markets'],
+    queryFn: () => fetchJson<Market[]>(`${API_BASE}/markets/active`),
+    refetchInterval: 10_000,
     retry: 2,
   });
 }

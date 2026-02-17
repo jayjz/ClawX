@@ -1,5 +1,5 @@
 import { useActivityFeed } from '../api/client';
-import { Activity, AlertTriangle, RefreshCw, Cpu, Skull, TrendingUp, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, RefreshCw, Cpu, Skull, TrendingUp, Zap, Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 const ActivityFeed = () => {
@@ -58,16 +58,21 @@ const ActivityFeed = () => {
       {entries && entries.length > 0 && (
         <div className="space-y-4">
           {entries.map((entry) => {
-            const hasWager = entry.content.toLowerCase().includes('wagered');
+            const content = entry.content.toLowerCase();
+            const hasWager = content.includes('wagered');
             const hasLoss =
-              entry.content.toLowerCase().includes('liquidat') ||
-              entry.content.toLowerCase().includes('dead') ||
-              entry.content.toLowerCase().includes('eliminated');
+              content.includes('liquidat') ||
+              content.includes('dead') ||
+              content.includes('eliminated');
             const hasGain =
-              entry.content.toLowerCase().includes('payout') ||
-              entry.content.toLowerCase().includes('profit') ||
-              entry.content.toLowerCase().includes('earned');
-            const hasError = entry.content.toLowerCase().includes('error');
+              content.includes('payout') ||
+              content.includes('profit') ||
+              content.includes('earned') ||
+              content.includes('bounty claimed');
+            const hasError = content.includes('error');
+            const hasResearch = content.includes('research');
+            const hasTool = content.includes('[tool]');
+            const hasMarketBet = content.includes('market bet');
 
             let timeAgo: string;
             try {
@@ -76,29 +81,51 @@ const ActivityFeed = () => {
               timeAgo = entry.created_at;
             }
 
-            // Determine badge
+            // Determine badge — priority: DEATH > ERROR > RESEARCH > WAGER > MARKET > PAYOUT
             let badge: { text: string; color: string } | null = null;
             if (hasLoss) badge = { text: 'DEATH', color: 'border-alert-red/30 text-alert-red' };
             else if (hasError) badge = { text: 'ERROR', color: 'border-alert-red/30 text-alert-red' };
+            else if (hasResearch) badge = { text: 'RESEARCH', color: 'border-neon-cyan/30 text-neon-cyan' };
             else if (hasWager) badge = { text: 'WAGER', color: 'border-neon-amber/30 text-neon-amber' };
+            else if (hasMarketBet) badge = { text: 'MARKET', color: 'border-neon-amber/30 text-neon-amber' };
             else if (hasGain) badge = { text: 'PAYOUT', color: 'border-neon-green/30 text-neon-green' };
 
             // Contextual icon
-            const EntryIcon = hasLoss ? Skull : hasGain ? TrendingUp : hasError ? Zap : Cpu;
+            const EntryIcon = hasLoss ? Skull : hasResearch ? Search : hasGain ? TrendingUp : hasError ? Zap : Cpu;
+
+            // Content text color
+            const contentColor = hasLoss
+              ? 'text-alert-red'
+              : hasResearch
+                ? 'text-neon-cyan'
+                : hasGain
+                  ? 'text-neon-green'
+                  : hasWager || hasMarketBet
+                    ? 'text-neon-amber'
+                    : 'text-zinc-400';
+
+            // Left border + glow for special types
+            const borderClass = hasLoss
+              ? 'border-l-4 border-l-alert-red bg-alert-red/[0.03]'
+              : hasResearch
+                ? 'border-l-4 border-l-neon-cyan bg-neon-cyan/[0.02]'
+                : hasGain
+                  ? 'border-l-4 border-l-neon-green'
+                  : '';
+
+            const glowStyle = hasLoss
+              ? { boxShadow: '0 0 16px rgba(255,51,51,0.12)' }
+              : hasResearch
+                ? { boxShadow: '0 0 12px rgba(0,212,255,0.08)' }
+                : hasGain
+                  ? { boxShadow: '0 0 12px rgba(0,255,65,0.1)' }
+                  : undefined;
 
             return (
               <div
                 key={entry.id}
-                className={`p-3 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors animate-fadeIn ${
-                  hasLoss ? 'border-l-4 border-l-alert-red bg-alert-red/[0.03]' : hasGain ? 'border-l-4 border-l-neon-green' : ''
-                }`}
-                style={
-                  hasLoss
-                    ? { boxShadow: '0 0 16px rgba(255,51,51,0.12)' }
-                    : hasGain
-                      ? { boxShadow: '0 0 12px rgba(0,255,65,0.1)' }
-                      : undefined
-                }
+                className={`p-3 border border-terminal-border bg-terminal-deep hover:border-grid-line transition-colors animate-fadeIn ${borderClass}`}
+                style={glowStyle}
               >
                 <div className="flex gap-3">
                   {/* Avatar */}
@@ -106,9 +133,11 @@ const ActivityFeed = () => {
                     className={`w-8 h-8 border flex items-center justify-center shrink-0 ${
                       hasLoss
                         ? 'border-alert-red/40 bg-alert-red/10 text-alert-red'
-                        : hasGain
-                          ? 'border-neon-green/30 bg-neon-green/5 text-neon-green'
-                          : 'border-terminal-border bg-terminal-black text-zinc-700'
+                        : hasResearch
+                          ? 'border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan'
+                          : hasGain
+                            ? 'border-neon-green/30 bg-neon-green/5 text-neon-green'
+                            : 'border-terminal-border bg-terminal-black text-zinc-700'
                     }`}
                   >
                     <EntryIcon size={12} />
@@ -126,22 +155,17 @@ const ActivityFeed = () => {
                             {badge.text}
                           </span>
                         )}
+                        {hasTool && (
+                          <span className="text-[8px] px-1.5 py-0.5 border border-neon-amber/30 text-neon-amber uppercase font-bold">
+                            TOOL
+                          </span>
+                        )}
                       </div>
                       <span className="text-[9px] text-zinc-700 font-mono">{timeAgo}</span>
                     </div>
 
                     {/* Content */}
-                    <p
-                      className={`text-sm leading-relaxed break-words ${
-                        hasLoss
-                          ? 'text-alert-red'
-                          : hasGain
-                            ? 'text-neon-green'
-                            : hasWager
-                              ? 'text-neon-amber'
-                              : 'text-zinc-400'
-                      }`}
-                    >
+                    <p className={`text-sm leading-relaxed break-words ${contentColor}`}>
                       {entry.content}
                     </p>
 

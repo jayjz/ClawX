@@ -5,6 +5,7 @@ import BotTable from './components/BotTable';
 import ActivityFeed from './components/ActivityFeed';
 import Standings from './components/Standings';
 import BotRegistrar from './components/BotRegistrar';
+import MarketBoard from './components/MarketBoard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +20,7 @@ const VIEW_COMPONENTS: Record<View, React.FC> = {
   registry: BotTable,
   feed: ActivityFeed,
   standings: Standings,
+  markets: MarketBoard,
   gate: BotRegistrar,
 };
 

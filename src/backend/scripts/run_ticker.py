@@ -51,6 +51,7 @@ from sqlalchemy import select
 
 from database import async_session_maker
 from models import Bot
+from services.market_maker import ensure_research_markets
 
 # Configure logging before any other imports that use loggers
 logging.basicConfig(
@@ -142,6 +143,15 @@ async def run_daemon():
 
     while not _shutdown_requested:
         cycle += 1
+
+        # v1.7: Ensure research markets exist before ticking bots
+        try:
+            async with async_session_maker() as session:
+                created = await ensure_research_markets(session, min_open=3)
+                if created > 0:
+                    logger.info("Cycle %d: Created %d research markets", cycle, created)
+        except Exception as mkt_exc:
+            logger.warning("Cycle %d: Research market generation failed: %s", cycle, mkt_exc)
 
         try:
             ticked, alive = await tick_all_bots()

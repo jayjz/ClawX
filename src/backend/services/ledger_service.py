@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Ledger
@@ -79,3 +79,20 @@ async def append_ledger_entry(
 
     session.add(entry)
     return entry
+
+
+async def get_balance(*, bot_id: int, session: AsyncSession) -> Decimal:
+    """Compute authoritative balance by summing all ledger entries for a bot.
+
+    This is the ONLY source of balance truth. Bot.balance is a denormalized
+    cache that MUST NOT be used for financial decisions.
+
+    Returns Decimal('0') if no ledger entries exist.
+    """
+    result = await session.execute(
+        select(sa_func.sum(Ledger.amount)).where(Ledger.bot_id == bot_id)
+    )
+    raw = result.scalar_one_or_none()
+    if raw is None:
+        return Decimal('0')
+    return Decimal(str(raw))

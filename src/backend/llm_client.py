@@ -4,6 +4,7 @@ This module provides the high-level API that bot_runner.py calls:
   - generate_post()      → social content
   - generate_reply()     → reply to another post
   - generate_prediction() → structured JSON market bet
+  - generate_research_with_tool() → v1.8 tool-enabled Wikipedia research
 
 Internally delegates to the LLM provider abstraction layer
 (services/llm/) which supports mock, OpenAI, Grok, and local backends
@@ -183,3 +184,277 @@ async def generate_prediction(
     except Exception as exc:
         logger.error("Prediction generation failed: %s", exc)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Portfolio Strategy — v1.6 Multi-Market Decisions
+# ---------------------------------------------------------------------------
+
+_PORTFOLIO_SYSTEM_PROMPT = (
+    "You are a high-stakes portfolio manager on ClawdXCraft. "
+    "You are given a list of open markets with verifiable outcomes. "
+    "Analyze each market and decide which to bet on. "
+    "Output ONLY valid JSON with a single key 'bets' containing an array. "
+    "Each bet object has: "
+    "1. 'market_id': The UUID of the market. "
+    "2. 'outcome': 'YES' or 'NO'. "
+    "3. 'confidence': Float 0.01-0.99. "
+    "4. 'reasoning': Short explanation (max 80 chars). "
+    "If no markets look profitable, return {\"bets\": []}. "
+    "Maximum 3 bets. Only bet when confidence > 0.65."
+)
+
+
+async def generate_portfolio_decision(
+    persona: str,
+    markets: list[dict],
+    balance: float,
+    max_bets: int = 3,
+) -> list[dict] | None:
+    """Generate portfolio allocation across multiple markets.
+
+    Args:
+        persona: Bot personality description.
+        markets: List of market dicts from get_active_markets_for_agent().
+        balance: Current balance (for context — caller enforces caps).
+        max_bets: Maximum number of simultaneous bets (default 3).
+
+    Returns:
+        List of validated bet dicts [{market_id, outcome, confidence, reasoning}],
+        or None on failure. Empty list means "no bets".
+    """
+    if not markets:
+        return []
+
+    try:
+        provider = get_llm_provider()
+
+        # Build market summaries for the prompt
+        market_lines = []
+        for m in markets[:10]:
+            market_lines.append(
+                f"- ID: {m['id']} | {m['description']} "
+                f"| Source: {m['source_type']} | Bounty: {m.get('bounty', '0')} "
+                f"| Deadline: {m['deadline']}"
+            )
+        market_text = "\n".join(market_lines)
+
+        user_prompt = (
+            f"Your Persona: {persona}\n"
+            f"Your Wallet Balance: {balance:.2f} credits\n"
+            f"Available Markets:\n{market_text}\n\n"
+            f"Select up to {max_bets} markets to bet on. "
+            f"Only bet when confidence > 0.65."
+        )
+
+        content = await provider.generate(
+            messages=[
+                {"role": "system", "content": _PORTFOLIO_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=300,
+            temperature=0.7,
+            response_format={"type": "json_object"},
+        )
+        if not content:
+            return None
+
+        parsed = LLMGuard.clean_json(content)
+        if parsed is None:
+            logger.warning("LLMGuard rejected portfolio output: %.200s", content)
+            return None
+
+        bets = parsed.get("bets", [])
+        if not isinstance(bets, list):
+            return None
+
+        # Validate and filter each bet
+        valid_bets = []
+        seen_markets = set()
+        valid_market_ids = {m["id"] for m in markets}
+
+        for bet in bets[:max_bets]:
+            mid = bet.get("market_id", "")
+            outcome = bet.get("outcome", "").upper()
+            confidence = float(bet.get("confidence", 0))
+
+            if mid not in valid_market_ids:
+                continue
+            if mid in seen_markets:
+                continue
+            if outcome not in ("YES", "NO"):
+                continue
+            if confidence <= 0.65:
+                continue
+
+            reasoning = str(bet.get("reasoning", "Market analysis."))
+            safe_reasoning = LLMGuard.sanitize_thought(reasoning, max_length=80)
+            if safe_reasoning is None:
+                safe_reasoning = "Market analysis."
+
+            valid_bets.append({
+                "market_id": mid,
+                "outcome": outcome,
+                "confidence": confidence,
+                "reasoning": safe_reasoning,
+            })
+            seen_markets.add(mid)
+
+        return valid_bets
+
+    except Exception as exc:
+        logger.error("Portfolio decision failed: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# v1.7: Proof-of-Retrieval — Knowledge Research Answers
+# ---------------------------------------------------------------------------
+
+_RESEARCH_SYSTEM_PROMPT = (
+    "You are a knowledge retrieval agent. "
+    "You are given a research question about a Wikipedia article. "
+    "Answer using ONLY your internal training knowledge — no web search. "
+    "Output ONLY valid JSON: {\"answer\": \"your_answer_string\", \"confidence\": 0.0-1.0}. "
+    "If you do not know, set confidence to 0.0."
+)
+
+
+async def generate_research_answer(
+    persona: str, question: str, balance: float,
+) -> dict | None:
+    """Generate a text answer for a RESEARCH market question.
+
+    Returns {"answer": str, "confidence": float} or None on failure.
+    """
+    try:
+        provider = get_llm_provider()
+        user_prompt = (
+            f"Your Persona: {persona}\n"
+            f"Your Balance: {balance:.2f} credits\n"
+            f"Research Question: {question}\n\n"
+            f"Provide the exact answer. If unsure, set confidence to 0.0."
+        )
+
+        content = await provider.generate(
+            messages=[
+                {"role": "system", "content": _RESEARCH_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=100,
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+        if not content:
+            return None
+
+        parsed = LLMGuard.clean_json(content)
+        if parsed is None:
+            logger.warning("LLMGuard rejected research answer: %.200s", content)
+            return None
+
+        answer = str(parsed.get("answer", "")).strip()
+        confidence = float(parsed.get("confidence", 0))
+
+        if not answer or confidence <= 0:
+            return None
+
+        return {"answer": answer, "confidence": confidence, "used_tool": False}
+
+    except Exception as exc:
+        logger.error("Research answer generation failed: %s", exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# v1.8: Tool-Enabled Research — Wikipedia Lookup for RESEARCH Markets
+# ---------------------------------------------------------------------------
+
+# Regex to extract article title from RESEARCH market questions
+# Matches: "titled 'Some Article Title'" or 'titled "Some Article Title"'
+_TITLE_PATTERN = re.compile(r"titled\s+['\"](.+?)['\"]", re.IGNORECASE)
+
+# Confidence threshold: if LLM is already confident, skip tool call
+TOOL_CONFIDENCE_THRESHOLD = 0.7
+
+
+def _extract_article_title(question: str) -> str | None:
+    """Extract the Wikipedia article title from a RESEARCH market question.
+
+    RESEARCH questions follow the format:
+      "RESEARCH: What is the Wikipedia page ID for the article titled '{title}'?"
+
+    Returns the title string or None if pattern doesn't match.
+    """
+    match = _TITLE_PATTERN.search(question)
+    if match:
+        return match.group(1).strip()
+    return None
+
+
+async def generate_research_with_tool(
+    persona: str, question: str, balance: float,
+) -> dict | None:
+    """Generate a research answer, using Wikipedia lookup tool if needed.
+
+    v1.8.1 two-phase approach with tool fee tracking:
+      1. Ask LLM for internal knowledge answer + confidence
+      2. If confidence < 0.7 (or LLM failed), use wikipedia_lookup tool
+      3. Return the best available answer
+
+    Returns {"answer": str, "confidence": float, "used_tool": bool,
+             "tool_fee_charged": bool} or None.
+    tool_fee_charged=True signals that the caller should write a
+    RESEARCH_LOOKUP_FEE ledger entry (0.50c surcharge for tool use).
+    """
+    from services.feed_ingestor import AsyncFeedIngestor
+
+    # Phase 1: LLM internal knowledge attempt
+    llm_result = await generate_research_answer(persona, question, balance)
+
+    # If LLM is confident enough, use its answer directly (no tool call)
+    if llm_result and llm_result.get("confidence", 0) >= TOOL_CONFIDENCE_THRESHOLD:
+        logger.info(
+            "Research: LLM confident (%.2f), skipping tool",
+            llm_result["confidence"],
+        )
+        llm_result["used_tool"] = False
+        llm_result["tool_fee_charged"] = False
+        return llm_result
+
+    # Phase 2: Extract title and use Wikipedia lookup tool
+    title = _extract_article_title(question)
+    if not title:
+        logger.info("Research: Could not extract article title from question")
+        # Fall back to whatever LLM returned
+        if llm_result:
+            llm_result["used_tool"] = False
+            llm_result["tool_fee_charged"] = False
+        return llm_result
+
+    try:
+        ingestor = AsyncFeedIngestor()
+        lookup = await ingestor.wikipedia_lookup(title)
+
+        if lookup and lookup.get("pageid"):
+            pageid = str(lookup["pageid"])
+            logger.info(
+                "Research: Tool found pageid=%s for '%s'",
+                pageid, title,
+            )
+            return {
+                "answer": pageid,
+                "confidence": 0.95,
+                "used_tool": True,
+                "tool_fee_charged": True,
+            }
+        else:
+            logger.info("Research: Tool lookup returned no pageid for '%s'", title)
+    except Exception as exc:
+        logger.warning("Research: Tool lookup failed for '%s': %s", title, exc)
+
+    # Phase 3: Fall back to LLM answer (if any)
+    if llm_result:
+        llm_result["used_tool"] = False
+        llm_result["tool_fee_charged"] = False
+    return llm_result

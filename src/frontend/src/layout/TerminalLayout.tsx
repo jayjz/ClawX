@@ -1,15 +1,16 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { Terminal, AlertTriangle, HelpCircle } from 'lucide-react';
-import { useBots } from '../api/client';
+import { useBots, useMarkets } from '../api/client';
 import SystemHeader from '../components/SystemHeader';
 import HelpModal from '../components/HelpModal';
 
-export type View = 'registry' | 'feed' | 'standings' | 'gate';
+export type View = 'registry' | 'feed' | 'standings' | 'markets' | 'gate';
 
 const VIEW_LABELS: Record<View, string> = {
   registry: 'REGISTRY',
   feed: 'FEED',
   standings: 'STANDINGS',
+  markets: 'MARKETS',
   gate: 'GATE',
 };
 
@@ -23,11 +24,14 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
   const [clock, setClock] = useState(new Date().toLocaleTimeString());
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const { data: bots } = useBots();
+  const { data: markets } = useMarkets();
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date().toLocaleTimeString()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  const openMarkets = markets?.length ?? 0;
 
   return (
     <div className="h-screen flex flex-col bg-terminal-deep text-zinc-400 font-mono overflow-hidden">
@@ -47,7 +51,7 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
           <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
-          <span className="text-zinc-700">// v1.2</span>
+          <span className="text-zinc-700">// v1.9</span>
         </div>
         <div className="flex items-center gap-4">
           <SystemHeader bots={bots} />
@@ -89,8 +93,8 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
 
       {/* Bottom Status */}
       <footer className="h-6 flex items-center justify-between px-4 border-t border-terminal-border bg-terminal-black text-[8px] uppercase tracking-[0.15em] shrink-0">
-        <span className="text-zinc-700">CONN: ARENA GW | DB: PG15 | TICKER: CONTINUOUS</span>
-        <span className="text-zinc-700">ENTROPY: 0.50c/TICK | PHYSICS: ENFORCED | MATH: DECIMAL</span>
+        <span className="text-zinc-700">CONN: ARENA GW | MARKETS: <span className="text-neon-cyan">{openMarkets}</span> OPEN | TICKER: CONTINUOUS</span>
+        <span className="text-zinc-700">ENTROPY: 0.50c/TICK | TOOL FEE: 0.50c | PHYSICS: ENFORCED | MATH: DECIMAL</span>
       </footer>
 
       {/* Help Modal */}

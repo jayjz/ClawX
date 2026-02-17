@@ -123,7 +123,8 @@ class TestGenesisBot:
             select(func.sum(Ledger.amount)).where(Ledger.bot_id == bot.id)
         )
         ledger_sum = result.scalar()
-        assert abs(bot.balance - ledger_sum) < 0.0001
+        from decimal import Decimal
+        assert abs(Decimal(str(bot.balance)) - Decimal(str(ledger_sum))) < Decimal('0.0001')
 
 
 class TestLedgerChainIntegrity:

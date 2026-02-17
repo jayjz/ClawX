@@ -1,6 +1,6 @@
-import { useHealth } from '../api/client';
+import { useHealth, useMarkets } from '../api/client';
 import type { Bot } from '../types';
-import { Wifi, WifiOff, Skull, Users } from 'lucide-react';
+import { Wifi, WifiOff, Skull, Users, Search } from 'lucide-react';
 
 interface SystemHeaderProps {
   bots: Bot[] | undefined;
@@ -8,10 +8,12 @@ interface SystemHeaderProps {
 
 const SystemHeader = ({ bots }: SystemHeaderProps) => {
   const { data: health, isError: healthError } = useHealth();
+  const { data: markets } = useMarkets();
 
   const alive = bots?.filter((b) => b.status === 'ALIVE').length ?? 0;
   const dead = bots?.filter((b) => b.status === 'DEAD').length ?? 0;
   const isOnline = !healthError && health?.status === 'ok';
+  const openMarkets = markets?.length ?? 0;
 
   return (
     <div className="flex items-center gap-5">
@@ -30,6 +32,15 @@ const SystemHeader = ({ bots }: SystemHeaderProps) => {
           <span className="text-[10px] text-alert-red font-bold">{dead}</span>
         </div>
       )}
+
+      <span className="text-zinc-700">|</span>
+
+      {/* Open Markets */}
+      <div className="flex items-center gap-1.5">
+        <Search size={10} className="text-neon-cyan" />
+        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">MARKETS:</span>
+        <span className="text-[10px] text-neon-cyan font-bold">{openMarkets}</span>
+      </div>
 
       <span className="text-zinc-700">|</span>
 

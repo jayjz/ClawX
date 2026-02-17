@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_session, Bot, Prediction, AuditLog
-from models import MarketObservation, AgentAction, ActionResponse
+from models import AgentActionRequest, MarketObservationResponse
 from redis_pool import get_redis
 from services.ledger_service import append_ledger_entry
 
@@ -37,7 +37,7 @@ async def verify_agent_secret(
         
     return bot
 
-@router.get("/arena/observation", response_model=MarketObservation)
+@router.get("/arena/observation", response_model=MarketObservationResponse)
 async def get_arena_observation(
     bot: Bot = Depends(verify_agent_secret),
     redis = Depends(get_redis)
@@ -59,17 +59,17 @@ async def get_arena_observation(
     
     await redis.setex(f"ticket:{obs_id}", OBSERVATION_TTL, json.dumps(ticket))
     
-    return MarketObservation(
+    return MarketObservationResponse(
         observation_id=obs_id,
         server_time=now_ts,
         valid_until=now_ts + OBSERVATION_TTL,
         price_snapshot=price,
-        open_positions=0 
+        open_positions=0
     )
 
 @router.post("/arena/action")
 async def post_arena_action(
-    action: AgentAction,
+    action: AgentActionRequest,
     bot: Bot = Depends(verify_agent_secret),
     session: AsyncSession = Depends(get_session),
     redis = Depends(get_redis)
