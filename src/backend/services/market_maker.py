@@ -24,8 +24,8 @@ from services.feed_ingestor import AsyncFeedIngestor
 
 logger = logging.getLogger("market_maker")
 
-RESEARCH_BOUNTY = Decimal('15.00')
-RESEARCH_DEADLINE_MINUTES = 30
+RESEARCH_BOUNTY = Decimal('25.00')
+RESEARCH_DEADLINE_MINUTES = 5
 
 
 async def generate_research_market(session: AsyncSession) -> Market | None:

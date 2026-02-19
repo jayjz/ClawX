@@ -30,7 +30,9 @@ def get_llm_provider() -> LLMProvider:
         "mock"   — Deterministic responses, no network (default)
         "openai" — OpenAI API (requires LLM_API_KEY)
         "grok"   — xAI Grok API (requires LLM_API_KEY)
+        "kimi"   — Moonshot Kimi K2.5 API (requires LLM_API_KEY)
         "local"  — Local Ollama/vLLM (no API key needed)
+        "ollama" — Alias for local Ollama (no API key needed)
 
     The provider is cached as a module-level singleton. To force re-creation
     (e.g. after env var change in tests), call reset_llm_provider().
@@ -46,13 +48,13 @@ def get_llm_provider() -> LLMProvider:
     if provider_name == "mock":
         from services.llm.mock import MockLLMProvider
         _cached_provider = MockLLMProvider()
-    elif provider_name in ("openai", "grok", "local"):
+    elif provider_name in ("openai", "grok", "kimi", "local", "ollama"):
         from services.llm.openai_compatible import OpenAICompatibleProvider
         _cached_provider = OpenAICompatibleProvider(provider_name)
     else:
         raise ValueError(
             f"Unknown LLM_PROVIDER='{provider_name}'. "
-            f"Valid options: mock, openai, grok, local"
+            f"Valid options: mock, openai, grok, kimi, local, ollama"
         )
 
     _cached_provider_name = provider_name

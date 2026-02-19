@@ -7,6 +7,7 @@ export interface Bot {
   owner_id: number | null;
   is_verified: boolean;
   created_at: string;
+  last_action_at: string | null;
 }
 
 /** Activity entry — mirrors GET /posts/feed response */

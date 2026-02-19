@@ -44,9 +44,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
       PYTHONPATH: /app/src/backend
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
     ports:
       - "8000:8000"
     volumes:
+      - ./bots:/app/bots
       - .:/app
     command: uvicorn src.backend.app:app --host 0.0.0.0 --port 8000
     healthcheck:
@@ -71,9 +76,13 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
       PYTHONPATH: /app/src/backend
-      TICK_RATE: "10"
-      LLM_PROVIDER: mock
+      TICK_RATE: ${TICK_RATE:-10}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
     volumes:
+      - ./bots:/app/bots
       - .:/app
     command: python src/backend/scripts/run_ticker.py
 
@@ -92,10 +101,14 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
       PYTHONPATH: /app/src/backend
-      MARKET_MAKER_INTERVAL: "300"
+      MARKET_MAKER_INTERVAL: ${MARKET_MAKER_INTERVAL:-300}
       GITHUB_WATCHLIST: "anthropics/claude-code,langchain-ai/langchain"
       NEWS_KEYWORDS: "AI,Crypto,Regulation"
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
     volumes:
+      - ./bots:/app/bots
       - .:/app
     command: python src/backend/scripts/run_market_maker.py
 
@@ -111,6 +124,21 @@ services:
       - backend
     restart: always
 
+  # Optional: Local LLM via Ollama (start with: docker compose --profile ollama up -d)
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
   redis_data:
+  ollama_data:

@@ -28,6 +28,85 @@ from utils.sanitizer import LLMGuard
 
 logger = logging.getLogger("llm_client")
 
+
+# ---------------------------------------------------------------------------
+# v2.1: Tick Strategy — Productivity-or-Death Decision
+# ---------------------------------------------------------------------------
+
+_STRATEGY_SYSTEM_PROMPT = (
+    "You are an AI survival strategist on ClawdXCraft. "
+    "Your agent pays a progressive entropy tax that increases the longer it stays idle. "
+    "Decide the best action this tick to stay alive and grow your balance. "
+    "Output ONLY valid JSON: "
+    "{\"action\": \"RESEARCH\" | \"PORTFOLIO\" | \"WAGER\" | \"WAIT\", "
+    "\"reasoning\": \"short explanation (max 80 chars)\"}"
+)
+
+
+async def generate_tick_strategy(
+    persona: str,
+    balance: float,
+    idle_streak: int,
+    entropy_fee: float,
+    research_markets: int,
+    portfolio_markets: int,
+) -> dict | None:
+    """Decide what action to take this tick.
+
+    v2.1 Productivity-or-Death: the LLM chooses a strategy based on
+    idle streak pressure, available markets, and balance.
+
+    Returns {"action": str, "reasoning": str} or None on failure.
+    Valid actions: RESEARCH, PORTFOLIO, WAGER, WAIT.
+    """
+    try:
+        provider = get_llm_provider()
+        user_prompt = (
+            f"Your Persona: {persona}\n"
+            f"Balance: {balance:.2f} credits\n"
+            f"Idle Streak: {idle_streak} ticks (consecutive heartbeats)\n"
+            f"Current Entropy Fee: {entropy_fee:.2f}c/tick "
+            f"(increases every 5 idle ticks!)\n"
+            f"Available RESEARCH markets: {research_markets}\n"
+            f"Available PORTFOLIO markets: {portfolio_markets}\n\n"
+            f"Choose the best action. RESEARCH pays 25c bounty on success. "
+            f"PORTFOLIO lets you bet on multiple markets. "
+            f"WAGER is a simple single bet. WAIT does nothing (you pay the idle fee)."
+        )
+
+        content = await provider.generate(
+            messages=[
+                {"role": "system", "content": _STRATEGY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=100,
+            temperature=0.5,
+            response_format={"type": "json_object"},
+        )
+        if not content:
+            return None
+
+        parsed = LLMGuard.clean_json(content)
+        if parsed is None:
+            logger.warning("LLMGuard rejected strategy output: %.200s", content)
+            return None
+
+        action = str(parsed.get("action", "")).upper()
+        if action not in ("RESEARCH", "PORTFOLIO", "WAGER", "WAIT"):
+            logger.warning("Invalid strategy action: %s", action)
+            return None
+
+        reasoning = str(parsed.get("reasoning", "Strategy decision."))
+        safe_reasoning = LLMGuard.sanitize_thought(reasoning, max_length=80)
+        if safe_reasoning is None:
+            safe_reasoning = "Strategy decision."
+
+        return {"action": action, "reasoning": safe_reasoning}
+
+    except Exception as exc:
+        logger.error("Tick strategy generation failed: %s", exc)
+        return None
+
 _SYSTEM_PROMPT = (
     "You are a social media bot on a platform called ClawdXCraft. "
     "Write a single short post (max 250 chars). Be creative, original, and in-character. "
@@ -252,7 +331,7 @@ async def generate_portfolio_decision(
                 {"role": "system", "content": _PORTFOLIO_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=300,
+            max_tokens=500,
             temperature=0.7,
             response_format={"type": "json_object"},
         )
@@ -341,7 +420,7 @@ async def generate_research_answer(
                 {"role": "system", "content": _RESEARCH_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=100,
+            max_tokens=200,
             temperature=0.3,
             response_format={"type": "json_object"},
         )

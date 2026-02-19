@@ -1,18 +1,22 @@
-"""Autonomous bot runner for ClawdXCraft — Write or Die Edition (v1.8.1).
+"""Autonomous bot runner for ClawdXCraft — Productivity-or-Death Edition (v2.1).
 
 Contract of Behavior:
   Every tick produces AT LEAST ONE ledger entry.
   No silent failures. No invisible skips. No free existence.
 
+  v2.1: Progressive entropy — idle bots pay escalating fees.
+  Fee = 0.50c base + 0.25c per 5 consecutive idle (HEARTBEAT-only) ticks.
+  Productive actions (RESEARCH, PORTFOLIO, WAGER) reset the idle streak.
+
   | Outcome                | Ledger Types                              | Amounts                              |
   |------------------------|-------------------------------------------|--------------------------------------|
-  | Research+tool (correct)| MARKET_STAKE + LOOKUP_FEE + RESEARCH_PAYOUT| -1.00 + -0.50 + bounty(15.00)       |
-  | Research+tool (wrong)  | MARKET_STAKE + LOOKUP_FEE + HEARTBEAT     | -1.00 + -0.50 + -ENTROPY_FEE        |
-  | Research (no tool)     | MARKET_STAKE + HEARTBEAT                  | -1.00 + -ENTROPY_FEE                |
-  | Portfolio (N bets)     | N×MARKET_STAKE + HBEAT          | -stake each + -ENTROPY_FEE     |
-  | Legacy single WAGER    | WAGER                           | -(ENTROPY_FEE + wager)         |
-  | Bot decides not to act | HEARTBEAT                       | -ENTROPY_FEE                   |
-  | LLM/API error          | HEARTBEAT                       | -ENTROPY_FEE                   |
+  | Research+tool (correct)| MARKET_STAKE + LOOKUP_FEE + RESEARCH_PAYOUT| -1.00 + -0.50 + bounty(25.00)       |
+  | Research+tool (wrong)  | MARKET_STAKE + LOOKUP_FEE + HEARTBEAT     | -1.00 + -0.50 + -entropy_fee        |
+  | Research (no tool)     | MARKET_STAKE + HEARTBEAT                  | -1.00 + -entropy_fee                |
+  | Portfolio (N bets)     | N×MARKET_STAKE + HBEAT          | -stake each + -entropy_fee     |
+  | Legacy single WAGER    | WAGER                           | -(entropy_fee + wager)         |
+  | Bot decides not to act | HEARTBEAT                       | -entropy_fee (PROGRESSIVE!)    |
+  | LLM/API error          | HEARTBEAT                       | -entropy_fee                   |
   | Balance < fee          | LIQUIDATION                     | -(remaining)                   |
   | Bot is DEAD            | (no tick)                       | —                              |
 
@@ -39,7 +43,7 @@ import httpx
 
 from bot_loader import load_bot_config
 from database import async_session_maker
-from llm_client import generate_portfolio_decision, generate_prediction, generate_research_answer, generate_research_with_tool
+from llm_client import generate_portfolio_decision, generate_prediction, generate_research_answer, generate_research_with_tool, generate_tick_strategy
 from models import Bot, Post
 from services.ledger_service import append_ledger_entry, get_balance
 from services.market_service import get_active_markets_for_agent, place_market_bet, submit_research_answer
@@ -49,10 +53,16 @@ from thread_memory import get_redis_client
 BASE_URL = os.environ.get("CLAWDXCRAFT_BASE_URL", "http://localhost:8000")
 TOKEN_REFRESH_SECONDS = 25 * 60  # refresh before 30-min JWT expiry
 
-# === THE LAW ===
-# Every tick costs this much. No exceptions. No free existence.
-# At 1000 credits and 60s ticks, a heartbeat-only bot survives ~2000 ticks (~33 hours).
-ENTROPY_FEE = Decimal('0.50')
+# === THE LAW (v2.1: Productivity-or-Death) ===
+# Progressive entropy: idle bots bleed faster. Productive bots pay base rate only.
+# Base fee 0.50c + 0.25c per 5 consecutive idle ticks, capped at 3.00c.
+ENTROPY_BASE = Decimal('0.50')
+ENTROPY_IDLE_PENALTY = Decimal('0.25')
+IDLE_PENALTY_INTERVAL = 5   # every 5 idle ticks, penalty increases by 0.25c
+MAX_ENTROPY_FEE = Decimal('3.00')  # cap to prevent instant death
+
+# Backward compat alias (used by error handler and tests)
+ENTROPY_FEE = ENTROPY_BASE
 
 # === PORTFOLIO STRATEGY LIMITS (v1.6) ===
 MAX_MARKETS_PER_TICK = 3
@@ -67,6 +77,45 @@ RESEARCH_CONFIDENCE_FLOOR = Decimal('0.50')  # lower bar than binary bets
 TOOL_LOOKUP_FEE = Decimal('0.50')          # v1.8.1: surcharge per Wikipedia lookup
 
 logger = logging.getLogger("bot_runner")
+
+
+# ============================================================================
+# v2.1: Progressive Entropy Helpers
+# ============================================================================
+
+def calculate_entropy_fee(idle_streak: int) -> Decimal:
+    """Calculate the progressive entropy fee based on consecutive idle ticks.
+
+    Fee = ENTROPY_BASE + ENTROPY_IDLE_PENALTY * (idle_streak // IDLE_PENALTY_INTERVAL)
+    Capped at MAX_ENTROPY_FEE to prevent instant death.
+    """
+    penalty_tiers = idle_streak // IDLE_PENALTY_INTERVAL
+    fee = ENTROPY_BASE + (ENTROPY_IDLE_PENALTY * penalty_tiers)
+    return min(fee, MAX_ENTROPY_FEE)
+
+
+async def get_idle_streak(bot_id: int, session) -> int:
+    """Count consecutive HEARTBEAT-only ticks for a bot.
+
+    Looks at the most recent ledger entries (up to 100) and counts
+    backwards from the newest. Any non-HEARTBEAT type resets the streak.
+    """
+    from models import Ledger
+    result = await session.execute(
+        select(Ledger.transaction_type)
+        .where(Ledger.bot_id == bot_id)
+        .order_by(Ledger.sequence.desc())
+        .limit(100)
+    )
+    entries = result.scalars().all()
+
+    streak = 0
+    for tx_type in entries:
+        if tx_type == "HEARTBEAT":
+            streak += 1
+        else:
+            break
+    return streak
 
 
 # ============================================================================
@@ -114,8 +163,19 @@ async def execute_tick(
             # Ledger sum is the ONLY source of balance truth
             current_balance = await get_balance(bot_id=bot_id, session=session)
 
+            # === STEP 0.5 (v2.1): IDLE STREAK + PROGRESSIVE ENTROPY ===
+            idle_streak = await get_idle_streak(bot_id=bot_id, session=session)
+            tick_entropy_fee = calculate_entropy_fee(idle_streak)
+
+            if idle_streak > 0 and tick_entropy_fee > ENTROPY_BASE:
+                logger.info(
+                    "TICK %s: bot_id=%d idle_streak=%d entropy_fee=%s (base=%s + penalty=%s)",
+                    tick_id[:8], bot_id, idle_streak, tick_entropy_fee,
+                    ENTROPY_BASE, tick_entropy_fee - ENTROPY_BASE,
+                )
+
             # === STEP 1: LIQUIDATION CHECK — can the bot afford to exist? ===
-            if current_balance < ENTROPY_FEE:
+            if current_balance < tick_entropy_fee:
                 drain_amount = -current_balance
                 bot.status = "DEAD"
                 bot.balance = Decimal('0')
@@ -138,16 +198,50 @@ async def execute_tick(
                 await session.commit()
                 logger.warning(
                     "TICK %s: LIQUIDATION bot_id=%d (balance=%s < fee=%s)",
-                    tick_id[:8], bot_id, current_balance, ENTROPY_FEE,
+                    tick_id[:8], bot_id, current_balance, tick_entropy_fee,
                 )
                 return "LIQUIDATION"
 
-            # === STEP 1.5 (v1.7): RESEARCH — Proof-of-Retrieval scavenger hunt ===
+            # === STEP 1.5 (v2.1): LLM STRATEGY DECISION ===
+            # Ask the LLM what to do this tick, given idle pressure and market state
+            strategy_action = None
+            try:
+                all_markets_for_strategy = await get_active_markets_for_agent(
+                    bot_id=bot_id, session=session, limit=10,
+                )
+                research_count = sum(1 for m in all_markets_for_strategy if m.get("source_type") == "RESEARCH")
+                portfolio_count = len(all_markets_for_strategy) - research_count
+
+                strategy = await generate_tick_strategy(
+                    persona=config.get("persona", "Arena agent"),
+                    balance=float(current_balance),
+                    idle_streak=idle_streak,
+                    entropy_fee=float(tick_entropy_fee),
+                    research_markets=research_count,
+                    portfolio_markets=portfolio_count,
+                )
+                if strategy:
+                    strategy_action = strategy["action"]
+                    logger.info(
+                        "TICK %s: STRATEGY bot_id=%d action=%s reason='%s' idle=%d fee=%s",
+                        tick_id[:8], bot_id, strategy_action,
+                        strategy.get("reasoning", ""), idle_streak, tick_entropy_fee,
+                    )
+            except Exception as strat_exc:
+                logger.warning(
+                    "TICK %s: Strategy decision failed, using priority chain: %s",
+                    tick_id[:8], strat_exc,
+                )
+
+            # === STEP 2: RESEARCH — Proof-of-Retrieval scavenger hunt ===
             research_attempted = False
             research_market_ids = set()  # track to skip in portfolio
 
+            # Strategy gate: skip research if LLM chose something else
+            skip_research = strategy_action is not None and strategy_action != "RESEARCH"
+
             try:
-                if current_balance >= ENTROPY_FEE + RESEARCH_STAKE:
+                if not skip_research and current_balance >= tick_entropy_fee + RESEARCH_STAKE:
                     all_markets = await get_active_markets_for_agent(
                         bot_id=bot_id, session=session, limit=10,
                     )
@@ -223,14 +317,16 @@ async def execute_tick(
             if research_attempted:
                 current_balance = await get_balance(bot_id=bot_id, session=session)
 
-            # === STEP 2 (v1.6): Portfolio Strategy — multi-market bets ===
-            available_after_fee = current_balance - ENTROPY_FEE
+            # === STEP 3 (v1.6): Portfolio Strategy — multi-market bets ===
+            # Strategy gate: skip portfolio if LLM chose something else
+            skip_portfolio = strategy_action is not None and strategy_action not in ("PORTFOLIO", "RESEARCH")
+            available_after_fee = current_balance - tick_entropy_fee
             max_total_stake = available_after_fee * MAX_TOTAL_STAKE_RATIO
             total_staked = Decimal('0')
             bets_placed = 0
 
             try:
-                if current_balance >= MIN_PORTFOLIO_BALANCE:
+                if not skip_portfolio and current_balance >= MIN_PORTFOLIO_BALANCE:
                     # Filter out RESEARCH markets (already handled above)
                     markets = [
                         m for m in await get_active_markets_for_agent(
@@ -300,8 +396,9 @@ async def execute_tick(
                 )
                 # Fall through to legacy single-bet path
 
-            # === STEP 3: Legacy single-bet fallback (only if no market bets placed) ===
-            if bets_placed == 0:
+            # === STEP 4: Legacy single-bet fallback (only if no market bets placed) ===
+            skip_wager = strategy_action is not None and strategy_action == "WAIT"
+            if bets_placed == 0 and not research_attempted and not skip_wager:
                 market_context = "Crypto markets are active. BTC direction unclear."
                 btc_price = None
 
@@ -321,13 +418,13 @@ async def execute_tick(
                     float(current_balance),
                 )
 
-                min_wager_balance = ENTROPY_FEE + Decimal('5.0')
+                min_wager_balance = tick_entropy_fee + Decimal('5.0')
                 if prediction and current_balance >= min_wager_balance:
-                    available = current_balance - ENTROPY_FEE
+                    available = current_balance - tick_entropy_fee
                     raw_wager = Decimal(str(prediction["wager_amount"]))
                     wager = min(raw_wager, available * Decimal('0.1'))
                     wager = max(wager, Decimal('0.01'))
-                    total_cost = ENTROPY_FEE + wager
+                    total_cost = tick_entropy_fee + wager
 
                     bot.balance = current_balance - total_cost
                     bot.last_action_at = datetime.now(timezone.utc)
@@ -351,22 +448,22 @@ async def execute_tick(
                     await session.commit()
                     logger.info(
                         "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
-                        tick_id[:8], bot_id, ENTROPY_FEE, wager, total_cost,
+                        tick_id[:8], bot_id, tick_entropy_fee, wager, total_cost,
                     )
                     return "WAGER"
 
-            # === STEP 4: HEARTBEAT (entropy charge — ALWAYS runs) ===
+            # === STEP 5: HEARTBEAT (entropy charge — ALWAYS runs) ===
             # If portfolio bets were placed, this is the entropy surcharge.
-            # If no bets, this is the standard heartbeat.
+            # If no bets, this is the standard heartbeat (PROGRESSIVE!).
             # Re-read balance if research changed it
             if research_attempted:
                 current_balance = await get_balance(bot_id=bot_id, session=session)
-            bot.balance = current_balance - ENTROPY_FEE - total_staked
+            bot.balance = current_balance - tick_entropy_fee - total_staked
             bot.last_action_at = datetime.now(timezone.utc)
 
             await append_ledger_entry(
                 bot_id=bot_id,
-                amount=float(-ENTROPY_FEE),
+                amount=float(-tick_entropy_fee),
                 transaction_type="HEARTBEAT",
                 reference_id=f"TICK:{tick_id}",
                 session=session,
@@ -377,20 +474,20 @@ async def execute_tick(
             if bets_placed > 0:
                 logger.info(
                     "TICK %s: PORTFOLIO bot_id=%d bets=%d staked=%s fee=%s",
-                    tick_id[:8], bot_id, bets_placed, total_staked, ENTROPY_FEE,
+                    tick_id[:8], bot_id, bets_placed, total_staked, tick_entropy_fee,
                 )
                 return "PORTFOLIO"
 
             if research_attempted:
                 logger.info(
                     "TICK %s: RESEARCH bot_id=%d fee=%s",
-                    tick_id[:8], bot_id, ENTROPY_FEE,
+                    tick_id[:8], bot_id, tick_entropy_fee,
                 )
                 return "RESEARCH"
 
             logger.info(
-                "TICK %s: HEARTBEAT bot_id=%d fee=%s",
-                tick_id[:8], bot_id, ENTROPY_FEE,
+                "TICK %s: HEARTBEAT bot_id=%d fee=%s idle_streak=%d",
+                tick_id[:8], bot_id, tick_entropy_fee, idle_streak,
             )
             return "HEARTBEAT"
 

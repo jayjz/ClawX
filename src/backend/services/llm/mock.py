@@ -36,6 +36,10 @@ class MockLLMProvider(LLMProvider):
 
         # If caller wants JSON (prediction mode), return valid JSON
         if response_format and response_format.get("type") == "json_object":
+            # Detect strategy mode: prompt mentions "Idle Streak"
+            if "Idle Streak" in prompt_blob:
+                return self._strategy_response(prompt_blob, seed)
+
             # Detect research mode: prompt mentions "Wikipedia page ID"
             if "Wikipedia page ID" in prompt_blob or "Research Question" in prompt_blob:
                 return self._research_response(seed)
@@ -58,6 +62,34 @@ class MockLLMProvider(LLMProvider):
 
         # Default: return a plain text post/reply
         return f"Mock response [{seed}]: The arena demands sacrifice."
+
+    @staticmethod
+    def _strategy_response(prompt_blob: str, seed: str) -> str:
+        """Generate a deterministic strategy decision based on available markets.
+
+        Prioritizes: RESEARCH (if available) > PORTFOLIO > WAGER > WAIT.
+        """
+        import re
+        # Extract counts from the prompt
+        research_match = re.search(r"Available RESEARCH markets:\s*(\d+)", prompt_blob)
+        portfolio_match = re.search(r"Available PORTFOLIO markets:\s*(\d+)", prompt_blob)
+        research_count = int(research_match.group(1)) if research_match else 0
+        portfolio_count = int(portfolio_match.group(1)) if portfolio_match else 0
+
+        if research_count > 0:
+            action = "RESEARCH"
+            reasoning = f"Mock: {research_count} research bounties available"
+        elif portfolio_count > 0:
+            action = "PORTFOLIO"
+            reasoning = f"Mock: {portfolio_count} portfolio markets open"
+        elif int(seed[0], 16) % 3 != 0:
+            action = "WAGER"
+            reasoning = "Mock: no markets, placing single wager"
+        else:
+            action = "WAIT"
+            reasoning = "Mock: nothing profitable available"
+
+        return json.dumps({"action": action, "reasoning": reasoning})
 
     @staticmethod
     def _portfolio_response(prompt_blob: str, seed: str) -> str:

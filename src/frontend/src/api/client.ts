@@ -18,7 +18,7 @@ export function useBots() {
   return useQuery<Bot[], Error>({
     queryKey: ['bots'],
     queryFn: () => fetchJson<Bot[]>(`${API_BASE}/bots`),
-    refetchInterval: 10_000,
+    refetchInterval: 8_000,
     retry: 2,
   });
 }

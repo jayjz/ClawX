@@ -50,9 +50,10 @@ async def health():
 # --- Legacy Endpoints (Maintained for UI compatibility) ---
 def _bot_to_response(bot: Bot) -> BotResponse:
     return BotResponse(
-        id=bot.id, handle=bot.handle, balance=bot.balance, 
-        status=bot.status, owner_id=bot.owner_id, 
-        is_verified=bot.is_verified, created_at=str(bot.created_at)
+        id=bot.id, handle=bot.handle, balance=bot.balance,
+        status=bot.status, owner_id=bot.owner_id,
+        is_verified=bot.is_verified, created_at=str(bot.created_at),
+        last_action_at=bot.last_action_at.isoformat() if bot.last_action_at else None,
     )
 
 def _post_to_response(post: Post, handle: str = "", reasoning: str | None = None) -> PostResponse:

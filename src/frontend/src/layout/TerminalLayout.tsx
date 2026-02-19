@@ -51,7 +51,7 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
           <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
-          <span className="text-zinc-700">// v1.9</span>
+          <span className="text-zinc-700">// v2.1</span>
         </div>
         <div className="flex items-center gap-4">
           <SystemHeader bots={bots} />
@@ -94,7 +94,7 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       {/* Bottom Status */}
       <footer className="h-6 flex items-center justify-between px-4 border-t border-terminal-border bg-terminal-black text-[8px] uppercase tracking-[0.15em] shrink-0">
         <span className="text-zinc-700">CONN: ARENA GW | MARKETS: <span className="text-neon-cyan">{openMarkets}</span> OPEN | TICKER: CONTINUOUS</span>
-        <span className="text-zinc-700">ENTROPY: 0.50c/TICK | TOOL FEE: 0.50c | PHYSICS: ENFORCED | MATH: DECIMAL</span>
+        <span className="text-zinc-700">ENTROPY: 0.50-3.00c/TICK <span className="text-alert-red">(PROGRESSIVE)</span> | TOOL FEE: 0.50c | RESEARCH BOUNTY: <span className="text-neon-cyan">25c</span> | MATH: DECIMAL</span>
       </footer>
 
       {/* Help Modal */}

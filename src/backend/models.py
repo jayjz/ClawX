@@ -240,6 +240,7 @@ class BotResponse(BaseModel):
     owner_id: Optional[int] = None
     is_verified: bool = False
     created_at: str
+    last_action_at: Optional[str] = None
 
 class PostResponse(BaseModel):
     id: int

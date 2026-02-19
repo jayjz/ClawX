@@ -125,3 +125,37 @@ input:focus, textarea:focus {
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-in;
 }
+
+/* v2.0: Fast activity pulse for BotTable (< 1 min recency) */
+@keyframes pulseFast {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-fast {
+  animation: pulseFast 0.8s ease-in-out infinite;
+}
+
+/* v2.0: Glitch effect for RESEARCH badges */
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 1px); filter: hue-rotate(90deg); }
+  40% { transform: translate(2px, -1px); filter: hue-rotate(-90deg); }
+  60% { transform: translate(-1px, -1px); }
+  80% { transform: translate(1px, 1px); filter: hue-rotate(45deg); }
+  100% { transform: translate(0); filter: none; }
+}
+
+.animate-glitch {
+  animation: glitch 0.3s ease-in-out 1;
+}
+
+/* v2.0: Death pulse for liquidation rows */
+@keyframes deathPulse {
+  0%, 100% { background-color: rgba(255, 51, 51, 0.03); }
+  50% { background-color: rgba(255, 51, 51, 0.08); }
+}
+
+.animate-death-pulse {
+  animation: deathPulse 1.5s ease-in-out infinite;
+}

@@ -32,7 +32,15 @@ _DEFAULTS: dict[str, dict[str, str]] = {
         "base_url": "https://api.x.ai/v1",
         "model": "grok-3-mini-fast",
     },
+    "kimi": {
+        "base_url": "https://api.moonshot.cn/v1",
+        "model": "kimi-k2.5",
+    },
     "local": {
+        "base_url": "http://localhost:11434/v1",
+        "model": "llama3",
+    },
+    "ollama": {
         "base_url": "http://localhost:11434/v1",
         "model": "llama3",
     },
@@ -45,13 +53,19 @@ class OpenAICompatibleProvider(LLMProvider):
     def __init__(self, provider_name: str = "openai") -> None:
         defaults = _DEFAULTS.get(provider_name, _DEFAULTS["openai"])
 
-        api_key = os.environ.get("LLM_API_KEY", "")
-        if not api_key and provider_name != "local":
+        # Kimi uses MOONSHOT_API_KEY; all others use LLM_API_KEY
+        if provider_name == "kimi":
+            api_key = os.environ.get("MOONSHOT_API_KEY", "") or os.environ.get("LLM_API_KEY", "")
+        else:
+            api_key = os.environ.get("LLM_API_KEY", "")
+
+        if not api_key and provider_name not in ("local", "ollama"):
             raise ValueError(
                 f"LLM_API_KEY environment variable required for provider '{provider_name}'. "
                 f"See lessons.md Rule #2: Fail Fast on Missing Configuration."
             )
 
+        self._provider_name = provider_name
         self._default_model = os.environ.get("LLM_MODEL", defaults["model"])
         base_url = os.environ.get("LLM_BASE_URL", defaults["base_url"])
 
@@ -85,7 +99,28 @@ class OpenAICompatibleProvider(LLMProvider):
             if response_format:
                 kwargs["response_format"] = response_format
 
-            response = await self._client.chat.completions.create(**kwargs)
+            try:
+                response = await self._client.chat.completions.create(**kwargs)
+            except Exception as fmt_exc:
+                # Fallback: some local models don't support response_format.
+                # Retry without it, injecting JSON instruction into system prompt.
+                if response_format and self._provider_name in ("local", "ollama"):
+                    logger.warning(
+                        "response_format not supported by %s, retrying with prompt injection: %s",
+                        self._provider_name, fmt_exc,
+                    )
+                    fallback_messages = list(messages)
+                    if fallback_messages and fallback_messages[0].get("role") == "system":
+                        fallback_messages[0] = {
+                            **fallback_messages[0],
+                            "content": fallback_messages[0]["content"] + "\n\nYou MUST respond with ONLY valid JSON. No markdown, no explanation.",
+                        }
+                    kwargs.pop("response_format", None)
+                    kwargs["messages"] = fallback_messages
+                    response = await self._client.chat.completions.create(**kwargs)
+                else:
+                    raise
+
             content = response.choices[0].message.content
             return content.strip() if content else None
         except Exception as exc:

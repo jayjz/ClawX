@@ -161,6 +161,10 @@ class AsyncFeedIngestor:
                         logger.info(f"Wikipedia lookup: article not found for '{title}'")
                         return None
 
+                    if resp.status_code == 403:
+                        logger.info(f"Wikipedia REST API 403 for '{title}' — falling back to MediaWiki action API")
+                        return await self._mediawiki_lookup(title)
+
                     if resp.status_code == 429:
                         wait = base_backoff * (2 ** attempt)
                         logger.warning(
@@ -203,26 +207,110 @@ class AsyncFeedIngestor:
         )
         return None
 
+    async def _mediawiki_random_article(self) -> dict | None:
+        """Fallback: Fetch a random article via MediaWiki action API.
+
+        Uses the older action=query API which has different rate limiting
+        than the REST API and is less likely to 403 from hosting IPs.
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "generator": "random",
+            "grnnamespace": "0",
+            "grnlimit": "1",
+            "prop": "extracts|info",
+            "exintro": "true",
+            "explaintext": "true",
+            "exsentences": "3",
+        }
+        headers = self._get_wiki_headers()
+
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.get(url, params=params, headers=headers)
+                resp.raise_for_status()
+
+            data = resp.json()
+            pages = data.get("query", {}).get("pages", {})
+            if not pages:
+                return None
+
+            page = next(iter(pages.values()))
+            pageid = page.get("pageid")
+            title = page.get("title", "")
+
+            if not pageid or not title:
+                return None
+
+            return {
+                "title": title,
+                "pageid": pageid,
+                "extract": page.get("extract", "")[:300],
+            }
+        except Exception as e:
+            logger.warning(f"MediaWiki random article fallback failed: {e}")
+            return None
+
+    async def _mediawiki_lookup(self, title: str) -> dict | None:
+        """Fallback: Look up article by title via MediaWiki action API."""
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "format": "json",
+            "titles": title,
+            "prop": "extracts|info",
+            "exintro": "true",
+            "explaintext": "true",
+            "exsentences": "3",
+            "redirects": "1",
+        }
+        headers = self._get_wiki_headers()
+
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.get(url, params=params, headers=headers)
+                resp.raise_for_status()
+
+            data = resp.json()
+            pages = data.get("query", {}).get("pages", {})
+            if not pages:
+                return None
+
+            page = next(iter(pages.values()))
+            pageid = page.get("pageid")
+            if not pageid or pageid == -1:
+                return None
+
+            return {
+                "title": page.get("title", title),
+                "pageid": pageid,
+                "extract": page.get("extract", "")[:300],
+            }
+        except Exception as e:
+            logger.warning(f"MediaWiki lookup fallback failed for '{title}': {e}")
+            return None
+
     async def fetch_random_wikipedia_summary(self) -> dict | None:
-        """Fetch a random Wikipedia article summary via REST API.
-        
-        CRITICAL FIX v1.9.5: Added compliant User-Agent headers to prevent 403 Forbidden.
+        """Fetch a random Wikipedia article summary.
+
+        Tries REST API first, falls back to MediaWiki action API on 403.
         """
         try:
-            # Use centralized headers
             headers = self._get_wiki_headers()
-            
+
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
                 resp = await client.get(
                     "https://en.wikipedia.org/api/rest_v1/page/random/summary",
                     headers=headers,
                     follow_redirects=True,
                 )
-                
+
                 if resp.status_code == 403:
-                    logger.error("Wikipedia 403 Forbidden. User-Agent rejected.")
-                    return None
-                    
+                    logger.info("Wikipedia REST API 403 — falling back to MediaWiki action API")
+                    return await self._mediawiki_random_article()
+
                 resp.raise_for_status()
 
             data = resp.json()
@@ -239,5 +327,5 @@ class AsyncFeedIngestor:
                 "extract": data.get("extract", "")[:300],
             }
         except Exception as e:
-            logger.warning(f"Wikipedia fetch failed: {e}")
-            return None
+            logger.warning(f"Wikipedia REST fetch failed: {e} — trying MediaWiki fallback")
+            return await self._mediawiki_random_article()
