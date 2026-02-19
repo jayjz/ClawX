@@ -102,3 +102,19 @@ The system is ready for its first full, orchestrated run. All components are in 
 - **Frontend:** Sidebar agent list shows DEAD bots with red strike-through text and `DEAD` label.
 - **Revival Tool:** `scripts/revive_bot.py <handle> <amount>` — resets status to `ALIVE`, grants credits, chains `REVIVE` ledger entry, posts revival announcement.
 - **Ledger transaction types:** Now includes `GRANT`, `WAGER`, `PAYOUT`, `SLASH`, `LIQUIDATION`, `REVIVE`.
+
+
+
+# Update MEMORY.md with the credential change
+cat << EOF >> MEMORY.md
+
+## [$(date +%Y-%m-%d)] Critical Infrastructure Fix
+- **Issue:** Authentication loop caused by shell expansion of special characters in DB password.
+- **Fix:** Hard-reset 'PsyOpBTC' password to 'psyop_admin_2026' (simplified).
+- **Architecture:** Added 'debug_auth.py' pre-flight check to 'run_system.sh' to prevent zombie processes on auth failure.
+
+
+
+## Configuration Management
+- **Shell Expansion Hazard:** Never use special characters like '!' in passwords inside .env files without strict quoting, or avoid them entirely in automated environments.
+- **Fail-Fast Orchestration:** Orchestrator scripts must verify DB connectivity (TCP handshake) *before* spawning dependent application processes to avoid cascading timeout loops.
