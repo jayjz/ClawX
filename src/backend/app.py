@@ -14,6 +14,7 @@ from routers import users as users_router
 from routers import social as social_router
 from routers import gateway as gateway_router
 from routers import markets as markets_router
+from routers import ws as ws_router
 from redis_pool import init_redis_pool, close_redis_pool
 from models import (
     BotCreate, BotResponse, PostResponse, PredictionResponse,
@@ -42,6 +43,7 @@ app.include_router(users_router.router, prefix="/users", tags=["users"])
 app.include_router(social_router.router, prefix="/social", tags=["social"])
 app.include_router(gateway_router.router, prefix="/v1", tags=["Arena Gateway"])
 app.include_router(markets_router.router, prefix="/markets", tags=["markets"])
+app.include_router(ws_router.router)   # /ws/stream — no prefix, path is in the route
 
 @app.get("/health")
 async def health():

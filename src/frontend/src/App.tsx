@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TerminalLayout, { type View } from './layout/TerminalLayout';
+import { NavigationProvider } from './context/NavigationContext';
+import ArenaDashboard from './components/ArenaDashboard';
 import BotTable from './components/BotTable';
 import ActivityFeed from './components/ActivityFeed';
 import Standings from './components/Standings';
@@ -17,6 +19,7 @@ const queryClient = new QueryClient({
 });
 
 const VIEW_COMPONENTS: Record<View, React.FC> = {
+  dashboard: ArenaDashboard,
   registry: BotTable,
   feed: ActivityFeed,
   standings: Standings,
@@ -25,13 +28,15 @@ const VIEW_COMPONENTS: Record<View, React.FC> = {
 };
 
 const AppInner = () => {
-  const [activeView, setActiveView] = useState<View>('standings');
+  const [activeView, setActiveView] = useState<View>('dashboard');
   const ActiveComponent = VIEW_COMPONENTS[activeView];
 
   return (
-    <TerminalLayout activeView={activeView} onViewChange={setActiveView}>
-      <ActiveComponent />
-    </TerminalLayout>
+    <NavigationProvider value={setActiveView}>
+      <TerminalLayout activeView={activeView} onViewChange={setActiveView}>
+        <ActiveComponent />
+      </TerminalLayout>
+    </NavigationProvider>
   );
 };
 

@@ -159,3 +159,54 @@ input:focus, textarea:focus {
 .animate-death-pulse {
   animation: deathPulse 1.5s ease-in-out infinite;
 }
+
+/* v3.1: Combat — fast impact flash for WAGER/strike events */
+@keyframes strike-animation {
+  0%   { filter: brightness(1);   transform: translate(0, 0) scale(1); }
+  10%  { filter: brightness(4);   transform: translate(-3px, 0) scale(1.04); }
+  20%  { filter: brightness(2);   transform: translate(3px, 0) scale(1.02); }
+  35%  { filter: brightness(1.5); transform: translate(-2px, 1px) scale(1.01); }
+  50%  { filter: brightness(1.2); transform: translate(1px, -1px); }
+  100% { filter: brightness(1);   transform: translate(0, 0) scale(1); }
+}
+
+.animate-strike {
+  animation: strike-animation 0.2s ease-out 1;
+}
+
+/* v3.1: Combat — terminal corruption dissolve for LIQUIDATION events */
+@keyframes glitch-death {
+  0%   { opacity: 1;   transform: translate(0);          filter: none; }
+  10%  { opacity: 0.9; transform: translate(-4px, 2px);  filter: hue-rotate(90deg) brightness(2); }
+  20%  { opacity: 0.8; transform: translate(4px, -2px);  filter: hue-rotate(-90deg); }
+  30%  { opacity: 0.7; transform: translate(-6px, 0);    filter: brightness(0.5); }
+  40%  { opacity: 0.5; transform: translate(4px, 2px);   filter: hue-rotate(180deg) brightness(3); }
+  50%  { opacity: 0.4; transform: translate(-2px, -4px); filter: saturate(0); }
+  65%  { opacity: 0.2; transform: translate(3px, 1px) scaleX(1.05); filter: brightness(0); }
+  80%  { opacity: 0.1; transform: translate(-1px, 0) scaleX(0.98); }
+  100% { opacity: 0;   transform: translate(0) scaleX(1); filter: none; }
+}
+
+.animate-glitch-death {
+  animation: glitch-death 0.6s ease-in 1 forwards;
+}
+
+/* v3.2 PURGED (v5): particle drain, liquidation-cell sparks — removed
+@keyframes spark-1 { ... }
+@keyframes spark-2 { ... }
+.liquidation-cell { ... }
+.liquidation-cell::before { ... }
+.liquidation-cell::after  { ... }
+*/
+
+/* v4.0 PURGED (v5): wager sparks, wager-cell, wager-flash, explosion-ring — removed
+@keyframes wager-spark-1  { ... }
+@keyframes wager-spark-2  { ... }
+.wager-cell               { ... }
+.wager-cell::before       { ... }
+.wager-cell::after        { ... }
+@keyframes wager-flash-bg { ... }
+.wager-flash              { ... }
+@keyframes explosion-ring { ... }
+.explosion-ring           { ... }
+*/

@@ -2,8 +2,8 @@
 """
 run_market_maker.py — Automated market generation daemon.
 
-Periodically calls ensure_research_markets() to keep the arena supplied
-with RESEARCH markets for agents to compete on.
+Periodically calls ensure_open_markets() to keep the arena supplied
+with markets across all 4 source types: RESEARCH · WEATHER · GITHUB · NEWS.
 
 Usage:
     docker compose up -d market-maker
@@ -24,7 +24,7 @@ if _backend not in sys.path:
     sys.path.insert(0, _backend)
 
 from database import async_session_maker
-from services.market_maker import ensure_research_markets
+from services.market_maker import ensure_open_markets
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,11 +50,11 @@ async def run_daemon():
         cycle += 1
         try:
             async with async_session_maker() as session:
-                created = await ensure_research_markets(session, min_open=3)
+                created = await ensure_open_markets(session, min_open=6)
                 if created:
-                    logger.info("Cycle %d: created %d research markets", cycle, created)
+                    logger.info("Cycle %d: created %d markets across all sources", cycle, created)
                 else:
-                    logger.debug("Cycle %d: markets sufficient", cycle)
+                    logger.debug("Cycle %d: board sufficiently stocked", cycle)
         except Exception:
             logger.exception("Cycle %d FAILED — will retry next cycle", cycle)
 

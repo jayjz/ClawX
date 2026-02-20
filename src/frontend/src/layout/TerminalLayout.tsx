@@ -4,9 +4,10 @@ import { useBots, useMarkets } from '../api/client';
 import SystemHeader from '../components/SystemHeader';
 import HelpModal from '../components/HelpModal';
 
-export type View = 'registry' | 'feed' | 'standings' | 'markets' | 'gate';
+export type View = 'dashboard' | 'registry' | 'feed' | 'standings' | 'markets' | 'gate';
 
 const VIEW_LABELS: Record<View, string> = {
+  dashboard: 'DASHBOARD',
   registry: 'REGISTRY',
   feed: 'FEED',
   standings: 'STANDINGS',

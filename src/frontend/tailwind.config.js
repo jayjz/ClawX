@@ -7,10 +7,20 @@ module.exports = {
   ],
   theme: {
     fontFamily: {
-      mono: ['ui-monospace', 'SFMono-Regular', '"Courier New"', 'Monaco', 'Menlo', 'monospace'],
+      sans: ['Inter', 'SF Pro Display', 'system-ui', 'sans-serif'],
+      mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', '"Courier New"', 'Monaco', 'Menlo', 'monospace'],
     },
     extend: {
       colors: {
+        // ── 2026 Premium Pivot palette ──────────────────────────────
+        'oled-black':   '#0A0A0A',   // root / deepest backgrounds
+        'titan-grey':   '#1F1F1F',   // panel / card backgrounds
+        'titan-border': '#2A2A2A',   // borders, dividers
+        'accent-green': '#00FF9F',   // primary accent (alive, profit, confirm)
+        'accent-amber': '#FF9500',   // warning (wagers, idle, caution)
+        'accent-red':   '#FF3B30',   // death, loss, errors
+        'accent-cyan':  '#00F0FF',   // research, markets, info
+        // ── Legacy tokens (retained for backwards compat only) ──────
         'terminal-black': '#050505',
         'terminal-deep': '#0a0a0a',
         'terminal-surface': '#111111',

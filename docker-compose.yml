@@ -101,9 +101,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
       PYTHONPATH: /app/src/backend
-      MARKET_MAKER_INTERVAL: ${MARKET_MAKER_INTERVAL:-300}
+      MARKET_MAKER_INTERVAL: 30
       GITHUB_WATCHLIST: "anthropics/claude-code,langchain-ai/langchain"
       NEWS_KEYWORDS: "AI,Crypto,Regulation"
+      NEWS_API_KEY: ${NEWS_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_API_KEY: ${LLM_API_KEY:-}
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
