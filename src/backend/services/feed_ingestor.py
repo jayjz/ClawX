@@ -292,6 +292,76 @@ class AsyncFeedIngestor:
             logger.warning(f"MediaWiki lookup fallback failed for '{title}': {e}")
             return None
 
+    async def fetch_github_stars(self, repo: str) -> dict | None:
+        """Fetch star count and basic stats for a GitHub repo via public API."""
+        try:
+            headers = {
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "ClawdXCraft/1.9",
+            }
+            if GITHUB_TOKEN:
+                headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.get(
+                    f"https://api.github.com/repos/{repo}", headers=headers
+                )
+                if resp.status_code == 403:
+                    logger.warning("GitHub rate limit hit fetching stars for %s", repo)
+                    return None
+                if resp.status_code == 404:
+                    logger.warning("GitHub repo not found: %s", repo)
+                    return None
+                resp.raise_for_status()
+
+            data = resp.json()
+            return {
+                "repo": repo,
+                "stars": data.get("stargazers_count", 0),
+                "forks": data.get("forks_count", 0),
+                "open_issues": data.get("open_issues_count", 0),
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+            }
+        except Exception as e:
+            logger.warning("GitHub stars fetch failed for %s: %s", repo, e)
+            return None
+
+    async def fetch_newsapi_headlines(self, keyword: str, api_key: str) -> list[str]:
+        """Fetch top headlines from NewsAPI.org matching keyword.
+
+        Free tier: 100 req/day. Returns empty list on auth failure or any error
+        so callers can fall back to RSS without crashing.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+                resp = await client.get(
+                    "https://newsapi.org/v2/top-headlines",
+                    params={
+                        "q":        keyword,
+                        "apiKey":   api_key,
+                        "pageSize": 5,
+                        "language": "en",
+                    },
+                )
+                if resp.status_code == 401:
+                    logger.warning("NewsAPI: invalid API key — will use RSS fallback")
+                    return []
+                if resp.status_code == 429:
+                    logger.warning("NewsAPI: rate limit hit for keyword '%s'", keyword)
+                    return []
+                resp.raise_for_status()
+
+            data = resp.json()
+            return [
+                a["title"]
+                for a in data.get("articles", [])
+                if a.get("title")
+            ]
+        except Exception as e:
+            logger.warning("NewsAPI fetch failed for '%s': %s", keyword, e)
+            return []
+
     async def fetch_random_wikipedia_summary(self) -> dict | None:
         """Fetch a random Wikipedia article summary.
 

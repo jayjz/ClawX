@@ -1,9 +1,61 @@
+import { useState, useEffect } from 'react';
 import { useBots } from '../api/client';
 import { Trophy, Skull, AlertTriangle, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+// ── Sparkline ─────────────────────────────────────────────────────────────────
+// 40×14 SVG polyline. Color: green if trending up, red down, amber flat.
+// Renders a dim horizontal line until ≥2 history points accumulate.
+
+const SPARK_W   = 40;
+const SPARK_H   = 14;
+const SPARK_MAX = 20;
+
+function Sparkline({ history }: { history: number[] }) {
+  if (history.length < 2) {
+    return (
+      <svg width={SPARK_W} height={SPARK_H} style={{ display: 'block', flexShrink: 0 }}>
+        <line x1={0} y1={SPARK_H / 2} x2={SPARK_W} y2={SPARK_H / 2} stroke="#2A2A2A" strokeWidth={1} />
+      </svg>
+    );
+  }
+  const min    = Math.min(...history);
+  const max    = Math.max(...history);
+  const range  = max - min || 1;
+  const pts    = history.map((v, i) =>
+    `${((i / (history.length - 1)) * SPARK_W).toFixed(1)},${(SPARK_H - ((v - min) / range) * (SPARK_H - 2) - 1).toFixed(1)}`
+  ).join(' ');
+  const last   = history[history.length - 1]!;
+  const prev   = history[history.length - 2]!;
+  const stroke = last > prev ? '#00FF9F' : last < prev ? '#FF3B30' : '#FF9500';
+  return (
+    <svg width={SPARK_W} height={SPARK_H} style={{ display: 'block', flexShrink: 0 }}>
+      <polyline points={pts} fill="none" stroke={stroke} strokeWidth={1.2} strokeLinejoin="round" opacity={0.85} />
+    </svg>
+  );
+}
+
 const Standings = () => {
   const { data: bots, isLoading, isError, error, refetch } = useBots();
+
+  // ── Balance history for sparklines (accumulates across refetch cycles) ───────
+  const [balanceHistory, setBalanceHistory] = useState<Partial<Record<number, number[]>>>({});
+  useEffect(() => {
+    if (!bots) return;
+    setBalanceHistory(prev => {
+      const next = { ...prev };
+      for (const bot of bots) {
+        const hist = [...(next[bot.id] ?? [])];
+        const last = hist[hist.length - 1];
+        if (last !== Number(bot.balance)) {
+          hist.push(Number(bot.balance));
+          if (hist.length > SPARK_MAX) hist.shift();
+          next[bot.id] = hist;
+        }
+      }
+      return next;
+    });
+  }, [bots]);
 
   const alive = (bots ?? [])
     .filter((b) => b.status === 'ALIVE')
@@ -107,7 +159,7 @@ const Standings = () => {
                     {bot.handle}
                   </span>
                   <span
-                    className={`text-right font-bold ${
+                    className={`flex items-center justify-end gap-1.5 font-bold ${
                       bot.balance >= 1000
                         ? 'text-neon-green'
                         : bot.balance > 100
@@ -115,7 +167,8 @@ const Standings = () => {
                           : 'text-alert-red'
                     }`}
                   >
-                    {bot.balance.toFixed(2)}c
+                    <Sparkline history={balanceHistory[bot.id] ?? []} />
+                    {Number(bot.balance).toFixed(2)}c
                   </span>
                   <span className="text-right text-zinc-500 text-xs">
                     {survivalTime}
@@ -156,8 +209,9 @@ const Standings = () => {
                 <span className="text-alert-red line-through">
                   {bot.handle}
                 </span>
-                <span className="text-right text-alert-red">
-                  {bot.balance.toFixed(2)}c
+                <span className="flex items-center justify-end gap-1.5 text-alert-red">
+                  <Sparkline history={balanceHistory[bot.id] ?? []} />
+                  {Number(bot.balance).toFixed(2)}c
                 </span>
                 <span className="text-right">
                   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold text-alert-red border border-alert-red/30 uppercase">

@@ -47,6 +47,7 @@ from llm_client import generate_portfolio_decision, generate_prediction, generat
 from models import Bot, Post
 from services.ledger_service import append_ledger_entry, get_balance
 from services.market_service import get_active_markets_for_agent, place_market_bet, submit_research_answer
+from services.ws_publisher import publish_tick_event
 from sqlalchemy import select
 from thread_memory import get_redis_client
 
@@ -200,6 +201,7 @@ async def execute_tick(
                     "TICK %s: LIQUIDATION bot_id=%d (balance=%s < fee=%s)",
                     tick_id[:8], bot_id, current_balance, tick_entropy_fee,
                 )
+                await publish_tick_event(bot_id, "LIQUIDATION", float(current_balance))
                 return "LIQUIDATION"
 
             # === STEP 1.5 (v2.1): LLM STRATEGY DECISION ===
@@ -450,6 +452,7 @@ async def execute_tick(
                         "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
                         tick_id[:8], bot_id, tick_entropy_fee, wager, total_cost,
                     )
+                    await publish_tick_event(bot_id, "WAGER", float(total_cost))
                     return "WAGER"
 
             # === STEP 5: HEARTBEAT (entropy charge — ALWAYS runs) ===
@@ -476,6 +479,9 @@ async def execute_tick(
                     "TICK %s: PORTFOLIO bot_id=%d bets=%d staked=%s fee=%s",
                     tick_id[:8], bot_id, bets_placed, total_staked, tick_entropy_fee,
                 )
+                await publish_tick_event(
+                    bot_id, "PORTFOLIO", float(total_staked + tick_entropy_fee),
+                )
                 return "PORTFOLIO"
 
             if research_attempted:
@@ -483,12 +489,16 @@ async def execute_tick(
                     "TICK %s: RESEARCH bot_id=%d fee=%s",
                     tick_id[:8], bot_id, tick_entropy_fee,
                 )
+                await publish_tick_event(
+                    bot_id, "RESEARCH", float(RESEARCH_STAKE + tick_entropy_fee),
+                )
                 return "RESEARCH"
 
             logger.info(
                 "TICK %s: HEARTBEAT bot_id=%d fee=%s idle_streak=%d",
                 tick_id[:8], bot_id, tick_entropy_fee, idle_streak,
             )
+            await publish_tick_event(bot_id, "HEARTBEAT", float(tick_entropy_fee))
             return "HEARTBEAT"
 
         except Exception as exc:
@@ -535,6 +545,7 @@ async def execute_tick(
                                 "TICK %s: %s (error) bot_id=%d error=%s",
                                 tick_id[:8], tx_type, bot_id, exc,
                             )
+                            await publish_tick_event(bot_id, tx_type)
                 except Exception as inner:
                     logger.critical(
                         "TICK %s: LEDGER WRITE FAILED bot_id=%d: %s (original: %s)",
