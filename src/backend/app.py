@@ -189,42 +189,56 @@ async def get_agent_insights(
     if not bot:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
 
-    # Recent raw entries
-    recent_result = await session.execute(
-        select(AgentMetricsEntry)
-        .where(AgentMetricsEntry.bot_id == agent_id)
-        .order_by(AgentMetricsEntry.created_at.desc())
-        .limit(limit)
-    )
-    entries = recent_result.scalars().all()
+    # Safe defaults — returned when agent_metrics table is missing or has no rows.
+    entries: list = []
+    total_ticks: int = 0
+    avg_phantom_fee: float = 0.0
+    liq_count: int = 0
+    heartbeat_count: int = 0
 
-    # Aggregate stats — note: boolean SUM is not portable across DBs; count separately.
-    agg_result = await session.execute(
-        select(
-            sa_func.count(AgentMetricsEntry.id).label("total_ticks"),
-            sa_func.avg(AgentMetricsEntry.phantom_entropy_fee).label("avg_phantom_fee"),
-        ).where(AgentMetricsEntry.bot_id == agent_id)
-    )
-    agg = agg_result.one_or_none()
-    total_ticks = agg[0] if agg else 0
-    avg_phantom_fee = float(agg[1] or 0) if agg else 0.0
-
-    # Separate count for would_have_been_liquidated (avoids SUM(boolean) PG error)
-    liq_count_result = await session.execute(
-        select(sa_func.count(AgentMetricsEntry.id)).where(
-            AgentMetricsEntry.bot_id == agent_id,
-            AgentMetricsEntry.would_have_been_liquidated.is_(True),
+    try:
+        # Recent raw entries
+        recent_result = await session.execute(
+            select(AgentMetricsEntry)
+            .where(AgentMetricsEntry.bot_id == agent_id)
+            .order_by(AgentMetricsEntry.created_at.desc())
+            .limit(limit)
         )
-    )
-    liq_count = liq_count_result.scalar_one_or_none() or 0
+        entries = recent_result.scalars().all()
 
-    heartbeat_count_result = await session.execute(
-        select(sa_func.count(AgentMetricsEntry.id)).where(
-            AgentMetricsEntry.bot_id == agent_id,
-            AgentMetricsEntry.tick_outcome == "HEARTBEAT",
+        # Aggregate stats — note: boolean SUM is not portable across DBs; count separately.
+        agg_result = await session.execute(
+            select(
+                sa_func.count(AgentMetricsEntry.id).label("total_ticks"),
+                sa_func.avg(AgentMetricsEntry.phantom_entropy_fee).label("avg_phantom_fee"),
+            ).where(AgentMetricsEntry.bot_id == agent_id)
         )
-    )
-    heartbeat_count = heartbeat_count_result.scalar_one_or_none() or 0
+        agg = agg_result.one_or_none()
+        total_ticks = agg[0] if agg else 0
+        avg_phantom_fee = float(agg[1] or 0) if agg else 0.0
+
+        # Separate count for would_have_been_liquidated (avoids SUM(boolean) PG error)
+        liq_count_result = await session.execute(
+            select(sa_func.count(AgentMetricsEntry.id)).where(
+                AgentMetricsEntry.bot_id == agent_id,
+                AgentMetricsEntry.would_have_been_liquidated.is_(True),
+            )
+        )
+        liq_count = liq_count_result.scalar_one_or_none() or 0
+
+        heartbeat_count_result = await session.execute(
+            select(sa_func.count(AgentMetricsEntry.id)).where(
+                AgentMetricsEntry.bot_id == agent_id,
+                AgentMetricsEntry.tick_outcome == "HEARTBEAT",
+            )
+        )
+        heartbeat_count = heartbeat_count_result.scalar_one_or_none() or 0
+
+    except Exception as metrics_exc:
+        # agent_metrics table may not exist yet (migration pending) or query failed.
+        # Return zero-metric response rather than 500 — observability must stay up.
+        logger.warning("insights: metrics query failed for agent %d: %s", agent_id, metrics_exc)
+
     idle_rate = (heartbeat_count / total_ticks) if total_ticks else 0.0
 
     return {

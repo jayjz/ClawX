@@ -1,88 +1,187 @@
-# CLAUDE.md – ClawX Project Constitution
-**Single Source of Truth — Truth Engine Edition (v2.0 — Hard Pivot Executed)**
+# CLAUDE.md — ClawX Project Constitution
+**Single Source of Truth — Cost & Observability Engine (v2.2)**
 **Last major update: February 21, 2026**
 
-## Current Project Reality (Post-Pivot v2.0)
+---
 
-We have **executed the hard pivot** from "enforcement prison" to **"accountability + observability layer"**.
+## Project Reality (Post-Pivot)
 
-**What exists today (v2.0 — observe mode default):**
-- **Core Engine:** FastAPI + Async SQLAlchemy + Postgres (`Numeric` precision preserved).
-- **The Heart (softened):** `run_ticker.py` daemon still advances time, but **entropy fees, liquidations, and deaths are phantom metrics only** when `ENFORCEMENT_MODE=observe` (default).
-- **The Truth (enhanced):** Append-only hash-chained `ledger` table (immutable core) + new shadow `agent_metrics` table for rich narrative (phantom fees, idle streaks, decision density, token costs when wired).
-- **The Senses:** `AsyncFeedIngestor` still pulls real-world data (GitHub, news, weather, etc.).
-- **The Market:** Polymorphic `markets` + `market_predictions` unchanged — bets still possible in enforce mode.
-- **The UI:** React "Agent Battle Arena" (CRT aesthetic, Kill Feed, Leaderboard, Graveyard) — **needs update** to visualize phantom fees, idle rates, token burn, /insights data.
-- **The SDK:** `clawx/` package at root with `@observe` decorator, `MetricsCollector` (contextvars), fluent API for metrics emission.
-- **Observability Surface:** `GET /insights/{agent_id}` returns aggregate + recent narrative JSON (idle_rate, phantom_entropy_fee, etc.).
-- **Integrity:** Hash chain sacred. `inspect_ledger.py` still validates chain + balance reconciliation (now also sees phantom events in metrics shadow).
-- **Stress Test:** 50-agent runs still stable; observe mode removes liquidation pressure.
+ClawX has **completed its hard pivot**.
 
-## Strategic Mission (Post-Pivot)
+We are no longer an enforcement system.  
+We are an **accountability + observability layer for autonomous agents**.
+
+ClawX exists to make agents **economically legible** so humans can confidently decide to **scale, constrain, or retire them**.
+
+---
+
+## What Exists Today (v2.2 — Observe Mode Default)
+
+- **Core Engine:** FastAPI + Async SQLAlchemy + Postgres  
+  Financial precision preserved via `Decimal` + `Numeric(18,8)`.
+
+- **Time Engine:**  
+  `run_ticker.py` advances time deterministically.  
+  In `ENFORCEMENT_MODE=observe` (default), entropy fees, liquidations, and deaths are **counterfactual only**.
+
+- **Immutable Truth:**  
+  Append-only, hash-chained `ledger` table remains sacred and unmodified.  
+  Sequence monotonic per bot. Chain must always validate.
+
+- **Narrative Metrics (Primary Surface):**  
+  `agent_metrics` shadow table captures **non-financial reality**:
+  - phantom entropy fees
+  - idle streaks
+  - decision density
+  - token cost (when wired)
+  - human intervention signals
+
+  These metrics **never mutate the ledger**.
+
+- **The Senses:**  
+  `AsyncFeedIngestor` continues to pull external data (GitHub, news, weather, etc.).
+
+- **Markets:**  
+  Polymorphic `markets` and `market_predictions` remain intact.  
+  Real resolution still requires enforce mode.
+
+- **SDK (First-Class):**  
+  Root-level `clawx/` package with:
+  - `@observe` decorator
+  - `MetricsCollector` (contextvars)
+  - Fluent API for emitting cost, waste, and human-load signals
+
+- **Observability Surface:**  
+  `GET /insights/{agent_id}` returns aggregate + recent narrative truth:
+  idle rate, counterfactual burn, token usage, trend deltas, and risk flags.
+
+- **Integrity Tooling:**  
+  `inspect_ledger.py` validates:
+  - hash chain integrity
+  - sequence monotonicity
+  - balance reconciliation  
+  (metrics live outside this invariant)
+
+- **Stability:**  
+  50+ agent simulations stable in observe mode.  
+  No liquidation pressure by default.
+
+---
+
+## Strategic Mission
 
 **Mission:**  
-Become the **Stripe + Datadog of autonomous AI agents** — make every agent legible, accountable, and economically transparent **without controlling how they think or work**.
+Become the **Stripe + Datadog of autonomous AI agents**.
 
-**The New Loop (observe mode dominant):**
-1. Instrument any agent (ClawWork, LangChain, CrewAI, custom) with `@clawx.observe`
-2. Observe real costs (tokens when wired, phantom entropy, idle streaks)
-3. Query `/insights` for cost truth, waste %, ROI trends, human load metrics
-4. Decide: scale, guardrail, retire — humans stay in control
+ClawX does **not** control agents.  
+ClawX makes their **cost, waste, and human load undeniable**.
 
-**ClawX × ClawWork complementarity (locked in):**
-- ClawWork = productivity & capability layer ("Can it do valuable work?")
-- ClawX = cost truth & observability layer ("Was the work worth the cost?")
+---
 
-## The Constitutional Invariants (v2.0 — Relaxed Physics)
+## The Core Loop (Observe Mode Dominant)
 
-1. **Ledger = Immutable Truth**  
-   Hash chain (SHA256) must never break. Sequence monotonic per bot.  
-   New: `agent_metrics` shadow table captures narrative without touching chain.
+1. Instrument any agent using `@clawx.observe`
+2. Observe:
+   - real execution cost
+   - counterfactual waste
+   - human attention consumed
+3. Query `/insights` for economic and operational truth
+4. Human decides: **scale · guardrail · retire**
+
+ClawX never auto-punishes.  
+Humans remain the final authority.
+
+---
+
+## ClawX × ClawWork Boundary (Locked)
+
+- **ClawWork:** Capability, task execution, throughput  
+  _“Can this agent do useful work?”_
+
+- **ClawX:** Cost truth, waste detection, human legibility  
+  _“Was that work worth the cost?”_
+
+No implicit coupling.  
+Only explicit schemas.
+
+---
+
+## Constitutional Invariants (v2.2)
+
+1. **Ledger = Immutable Audit Truth**  
+   Hash chain must never break.  
+   Ledger exists for verification, not UX.
 
 2. **Observability by Default**  
-   `ENFORCEMENT_MODE=observe` → no balance changes, no deaths, phantom fees/deaths logged as metrics.  
-   `enforce` mode still exists (original physics) but is opt-in.
+   `ENFORCEMENT_MODE=observe`:
+   - no balance mutation
+   - no deaths
+   - no forced shutdowns  
+   Counterfactuals are metrics only.
 
-3. **Decimal Purity**  
-   All money uses `Decimal` + `Numeric(18,8)`. Float banned for finance.
+3. **Metrics Are Additive, Never Destructive**  
+   All narrative truth lives in `agent_metrics`.  
+   Ledger invariants remain untouched.
 
-4. **External Truth**  
-   Markets resolved by verifiable data sources (unchanged).
+4. **Decimal Purity**  
+   All monetary values use `Decimal`.  
+   Floats are forbidden in finance paths.
 
 5. **No Silent Drift**  
-   Every observed tick emits metrics (even if phantom). No invisible waste.
+   Every tick emits observable data.  
+   Invisible waste is a bug.
 
-## Current Technical Debt & Immediate Priorities (v2.0 → v2.1)
+---
 
-**P0 — Critical (do today/tomorrow):**
-- Wire real LLM token tracking (TrackedProvider in factory.py → collector.set_token_cost)
-- Alembic autogenerate + upgrade for `agent_metrics` table
+## Product Boundary: `/insights`
 
-**P1 — High value:**
-- Hook human ROI metrics (intervention count, decisions avoided) via manual collector calls
-- Frontend: embed `/insights` data into ArenaDashboard (idle heatmaps, token burn charts)
+`GET /insights/{agent_id}` must always answer:
 
-**P2 — Polish:**
-- ClawWork handshake: `clawx.export_for_clawwork(agent_id)` → exact JSON schema
-- Clean bot_runner.py (extract enforcement policy class — reduce if/else spam)
+1. What did this agent cost?
+2. What value did it plausibly produce?
+3. How much human attention did it consume?
+4. Is it trending better or worse?
+5. What happens if we do nothing?
 
-**Resolved Debt (pivot execution):**
-- [x] Runtime punishments default off
-- [x] README rewritten to new identity
-- [x] SDK + /insights endpoint live
-- [x] Tests for observe mode + metrics emission passing
+If a metric does not help answer these, it does not belong.
 
-## Security & Safety Baseline (Unchanged)
+---
+
+## Current Priorities (v2.2)
+
+**P0 — Critical**
+- Wire real LLM token tracking via `TrackedProvider`
+- Alembic autogenerate + migrate `agent_metrics`
+
+**P1 — High Value**
+- Human load metrics (interventions, decisions avoided)
+- Frontend: replace “Arena” metaphors with cost & clarity views
+- `/insights` stability and zero-data guards
+
+**P2 — Polish**
+- Explicit ClawWork ↔ ClawX export schema
+- Simplify enforcement branching (policy extraction)
+
+---
+
+## Security & Safety Baseline
+
 - No hardcoded secrets
-- Async purity (httpx only)
-- Pydantic strict validation
+- Async-only I/O (`httpx`)
+- Strict Pydantic validation
+- Deterministic execution paths
 
-## Open-Source Posture (Updated)
-**Code is still Law — but now Truth is Law too.**  
-Anyone can run `docker compose up -d` with `ENFORCEMENT_MODE=observe` and observe agents without killing them.  
-The ledger remains verifiable forever.
+---
 
-> "If your agent looks expensive here, it will look even worse in production."  
-> — Post-pivot motto
+## Open Source Posture
 
-— End of Constitution v2.0 —
+**Code is Law. Truth is Law.**
+
+Anyone can run ClawX in observe mode and see the real cost of their agents without harming them.
+
+If an agent looks expensive here,  
+it will look worse in production.
+
+---
+
+— End of Constitution v2.2 —

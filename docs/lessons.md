@@ -144,6 +144,16 @@ This document accumulates critical rules and patterns discovered during developm
 - **SUM(boolean) crash:** `sa_func.cast(col, sa_func.Integer)` is invalid — `sa_func` is SQLAlchemy's `func` proxy, not the types module. `hasattr(sa_func, "Integer")` is always `False`, so the ternary passes a raw boolean column to `SUM()`, which PostgreSQL rejects. Fix: remove the cast from the aggregate SELECT and use a separate `COUNT(...) WHERE would_have_been_liquidated IS TRUE` query instead.
 - **WS auth spam:** When `ENFORCEMENT_MODE=observe` (the default), anonymous frontend connections are legitimate viewers. Gating every connection on JWT produces log spam and no security value. Fix: compute `_WS_AUTH_REQUIRED = (mode == "enforce" AND ENV != "development")` once at module load; skip the token check when False.
 
+## Observe-Mode Balance Sync — Always Use get_balance() (Feb 21 2026)
+- **Bug:** When both research AND portfolio occur in the same tick, `current_balance` is re-read at the HEARTBEAT step to include research effects. Then `bot.balance = current_balance - total_staked` subtracts portfolio stakes a second time (they're already baked into `current_balance`). Result: `bot.balance < SUM(ledger)`.
+- **Fix:** Replace `bot.balance = current_balance - total_staked` with `bot.balance = await get_balance(bot_id=bot_id, session=session)`. One extra DB SELECT per observe-mode tick with real ledger writes. Always authoritative.
+- **Rule:** In observe mode, whenever any real ledger entries were written in a tick (MARKET_STAKE, RESEARCH_PAYOUT), set `bot.balance` from a fresh `get_balance()` call — never from snapshot arithmetic. Snapshot variables become stale the moment a ledger entry is written inside the same session.
+
+## /insights Must Never 500 (Feb 21 2026)
+- **Bug:** `GET /insights/{agent_id}` had no exception handling around `AgentMetricsEntry` queries. If the `agent_metrics` migration hasn't run, every call threw `ProgrammingError: relation "agent_metrics" does not exist` → uncaught → 500.
+- **Fix:** Initialise zero-metric defaults before the query block; wrap all `AgentMetricsEntry` queries in `try/except`; log at WARNING and fall through to the zero-metric response.
+- **Rule:** Observability endpoints are read-only and non-critical. They must NEVER 500. A missing or empty shadow table should produce a valid response with zeroed metrics, not an error.
+
 ## Tool Reliability — Retry/Backoff & Fee (Feb 17 2026)
 - **Problem:** Wikipedia lookup was fire-once — any 429 or timeout meant a lost research opportunity for the bot.
 - **Fix (v1.8.1):** `wikipedia_lookup()` retries up to 3 times with exponential backoff (base 2s) on 429 and timeout. 404 is definitive (no retry). Non-transient errors return None immediately.

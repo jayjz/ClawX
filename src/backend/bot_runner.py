@@ -1,10 +1,11 @@
-"""Autonomous bot runner for ClawdXCraft — Productivity-or-Death Edition (v2.1).
+"""Autonomous bot runner for ClawdXCraft — Observability Edition (v2.2).
 
 Contract of Behavior:
   Every tick produces AT LEAST ONE ledger entry.
-  No silent failures. No invisible skips. No free existence.
+  No silent failures. No invisible skips.
+  Agents are NEVER automatically terminated — balance is observed, not enforced.
 
-  v2.1: Progressive entropy — idle bots pay escalating fees.
+  v2.1: Progressive entropy — idle bots pay escalating fees (enforce mode only).
   Fee = 0.50c base + 0.25c per 5 consecutive idle (HEARTBEAT-only) ticks.
   Productive actions (RESEARCH, PORTFOLIO, WAGER) reset the idle streak.
 
@@ -17,8 +18,7 @@ Contract of Behavior:
   | Legacy single WAGER    | WAGER                           | -(entropy_fee + wager)         |
   | Bot decides not to act | HEARTBEAT                       | -entropy_fee (PROGRESSIVE!)    |
   | LLM/API error          | HEARTBEAT                       | -entropy_fee                   |
-  | Balance < fee          | LIQUIDATION                     | -(remaining)                   |
-  | Bot is DEAD            | (no tick)                       | —                              |
+  | Balance < fee          | (advisory — no ledger write)    | —                              |
 
 Constitutional references:
   - CLAUDE.md Invariant #1: Inaction is costly — ENTROPY_FEE enforces this
@@ -157,7 +157,7 @@ async def execute_tick(
         http_headers: Optional auth headers for HTTP calls.
 
     Returns:
-        The tick outcome: "RESEARCH", "PORTFOLIO", "WAGER", "HEARTBEAT", or "LIQUIDATION".
+        The tick outcome: "RESEARCH", "PORTFOLIO", "WAGER", or "HEARTBEAT".
     """
     tick_id = str(uuid.uuid4())
     ledger_written = False
@@ -550,14 +550,27 @@ async def execute_tick(
                 # Observe mode: phantom entropy — record what WOULD have happened.
                 bot.last_action_at = datetime.now(timezone.utc)
                 # Sync bot.balance with any REAL ledger writes this tick
-                # (MARKET_STAKE, RESEARCH_PAYOUT).  Entropy is phantom and is
-                # intentionally NOT deducted, but stakes are real entries in the
-                # chain — bot.balance must mirror SUM(ledger) or inspect_ledger fails.
+                # (MARKET_STAKE, RESEARCH_PAYOUT). Always read the fresh ledger
+                # sum — NOT current_balance minus staked, which double-subtracts
+                # portfolio stakes when research also occurred in the same tick
+                # (current_balance is re-read post-research at L522, so portfolio
+                # stakes are already included before we subtract them again).
                 if total_staked > Decimal('0') or research_attempted:
-                    bot.balance = current_balance - total_staked
+                    bot.balance = await get_balance(bot_id=bot_id, session=session)
+                # Zero-amount sentinel: satisfies SUM(ledger)==Bot.balance invariant
+                # and ensures drive_economy delta check passes (1 entry per tick).
+                # amount=0 leaves the financial sum unchanged; hash chain still grows.
+                await append_ledger_entry(
+                    bot_id=bot_id,
+                    amount=Decimal('0'),
+                    transaction_type="HEARTBEAT_OBSERVE",
+                    reference_id=f"TICK:{tick_id}",
+                    session=session,
+                    narrative_fields=_hb_narrative,
+                )
+                ledger_written = True
                 if _metrics:
                     _metrics.record_phantom_enforcement(fee=float(tick_entropy_fee))
-                # Still need to commit any portfolio bets written this tick.
 
             await session.commit()
 
