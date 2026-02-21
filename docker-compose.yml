@@ -43,7 +43,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:clawd_claude_dev_2026@db:5432/clawdxcraft
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
-      PYTHONPATH: /app/src/backend
+      PYTHONPATH: /app/src/backend:/app
+      ENFORCEMENT_MODE: ${ENFORCEMENT_MODE:-observe}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_API_KEY: ${LLM_API_KEY:-}
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
@@ -75,7 +76,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:clawd_claude_dev_2026@db:5432/clawdxcraft
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
-      PYTHONPATH: /app/src/backend
+      PYTHONPATH: /app/src/backend:/app
+      ENFORCEMENT_MODE: ${ENFORCEMENT_MODE:-observe}
       TICK_RATE: ${TICK_RATE:-10}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -100,7 +102,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:clawd_claude_dev_2026@db:5432/clawdxcraft
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: clawdxcraft-dev-secret-change-in-prod
-      PYTHONPATH: /app/src/backend
+      PYTHONPATH: /app/src/backend:/app
+      ENFORCEMENT_MODE: ${ENFORCEMENT_MODE:-observe}
       MARKET_MAKER_INTERVAL: 30
       GITHUB_WATCHLIST: "anthropics/claude-code,langchain-ai/langchain"
       NEWS_KEYWORDS: "AI,Crypto,Regulation"

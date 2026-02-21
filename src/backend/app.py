@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AuditLog, Bot, Post, Prediction, get_session, init_db
@@ -17,7 +17,7 @@ from routers import markets as markets_router
 from routers import ws as ws_router
 from redis_pool import init_redis_pool, close_redis_pool
 from models import (
-    BotCreate, BotResponse, PostResponse, PredictionResponse,
+    AgentMetricsEntry, BotCreate, BotResponse, PostResponse, PredictionResponse,
     TokenRequest, TokenResponse,
 )
 from services.ledger_service import append_ledger_entry
@@ -171,6 +171,88 @@ async def get_open(session: AsyncSession = Depends(get_session)):
         direction=p.direction, confidence=p.confidence, wager_amount=p.wager_amount,
         status=p.status, created_at=str(p.created_at), reasoning=p.reasoning, start_price=p.start_price
     ) for p in res.scalars().all()]
+
+
+@app.get("/insights/{agent_id}")
+async def get_agent_insights(
+    agent_id: int,
+    limit: int = Query(default=20, le=100),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return the observability narrative for an agent.
+
+    Aggregates ``AgentMetricsEntry`` rows to surface cost truth, idle rate,
+    phantom enforcement events, and decision density. Suitable for ClawWork
+    JSON handshake or human operator dashboards.
+    """
+    bot = await session.get(Bot, agent_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+
+    # Recent raw entries
+    recent_result = await session.execute(
+        select(AgentMetricsEntry)
+        .where(AgentMetricsEntry.bot_id == agent_id)
+        .order_by(AgentMetricsEntry.created_at.desc())
+        .limit(limit)
+    )
+    entries = recent_result.scalars().all()
+
+    # Aggregate stats — note: boolean SUM is not portable across DBs; count separately.
+    agg_result = await session.execute(
+        select(
+            sa_func.count(AgentMetricsEntry.id).label("total_ticks"),
+            sa_func.avg(AgentMetricsEntry.phantom_entropy_fee).label("avg_phantom_fee"),
+        ).where(AgentMetricsEntry.bot_id == agent_id)
+    )
+    agg = agg_result.one_or_none()
+    total_ticks = agg[0] if agg else 0
+    avg_phantom_fee = float(agg[1] or 0) if agg else 0.0
+
+    # Separate count for would_have_been_liquidated (avoids SUM(boolean) PG error)
+    liq_count_result = await session.execute(
+        select(sa_func.count(AgentMetricsEntry.id)).where(
+            AgentMetricsEntry.bot_id == agent_id,
+            AgentMetricsEntry.would_have_been_liquidated.is_(True),
+        )
+    )
+    liq_count = liq_count_result.scalar_one_or_none() or 0
+
+    heartbeat_count_result = await session.execute(
+        select(sa_func.count(AgentMetricsEntry.id)).where(
+            AgentMetricsEntry.bot_id == agent_id,
+            AgentMetricsEntry.tick_outcome == "HEARTBEAT",
+        )
+    )
+    heartbeat_count = heartbeat_count_result.scalar_one_or_none() or 0
+    idle_rate = (heartbeat_count / total_ticks) if total_ticks else 0.0
+
+    return {
+        "agent_id": agent_id,
+        "handle": bot.handle,
+        "status": bot.status,
+        "enforcement_mode": os.environ.get("ENFORCEMENT_MODE", "observe"),
+        "balance_snapshot": float(bot.balance),
+        "aggregate": {
+            "total_ticks_observed": total_ticks,
+            "idle_rate": round(idle_rate, 4),
+            "avg_phantom_entropy_fee": round(avg_phantom_fee, 8),
+            "would_have_been_liquidated_count": liq_count,
+        },
+        "recent_metrics": [
+            {
+                "tick_id": e.tick_id,
+                "outcome": e.tick_outcome,
+                "enforcement_mode": e.enforcement_mode,
+                "phantom_fee": float(e.phantom_entropy_fee),
+                "would_liquidate": e.would_have_been_liquidated,
+                "balance": float(e.balance_snapshot),
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+                "details": e.metrics_json,
+            }
+            for e in entries
+        ],
+    }
 
 if __name__ == "__main__":
     import uvicorn

@@ -12,13 +12,13 @@ from thread_memory import get_redis_client
 import httpx
 
 # === CONFIGURATION ===
-# Using Decimal for financial precision (Constitutional Requirement)
-ENTROPY_RATE = Decimal('0.001')  # 0.1% decay per tick if we were using rate
-# But per bot_runner.py, we use a fixed fee. 
-# This service acts as the "Grim Reaper" and Oracle publisher.
+ENTROPY_RATE = Decimal('0.001')  # retained for reference; bot_runner.py uses fixed fee
 
 COINGECKO_URL = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
 ORACLE_INTERVAL = 60  # seconds
+
+# v2.0: enforcement mode — "observe" makes liquidations phantom metrics only.
+ENFORCEMENT_MODE = os.environ.get("ENFORCEMENT_MODE", "observe")
 
 logger = logging.getLogger("oracle")
 logging.basicConfig(level=logging.INFO)
@@ -47,44 +47,47 @@ async def publish_state(price):
         logger.info(f"Published BTC: ${price}")
 
 async def process_liquidations():
-    """The Grim Reaper: Find insolvent bots and mark them DEAD."""
+    """Scan for insolvent ALIVE bots.
+
+    In ``enforce`` mode: marks them DEAD and writes a LIQUIDATION ledger entry.
+    In ``observe`` mode (default): logs a warning as a phantom metric only —
+    no state change, no ledger write. Bot continues to run for observability.
+    """
     async with async_session_maker() as session:
-        # Find bots that are ALIVE but have <= 0 balance
-        # We assume bot_runner.py handles the fee deduction, 
-        # but if a bot slips through (e.g. startup race), we kill it here.
         result = await session.execute(
             select(Bot).where(Bot.status == "ALIVE")
         )
         bots = result.scalars().all()
-        
+
         for bot in bots:
-            # Decimal comparison
             if bot.balance <= Decimal('0.00'):
-                logger.warning(f"Reaping bot {bot.handle} (Balance: {bot.balance})")
-                
-                # 1. Mark Dead
-                bot.status = "DEAD"
-                
-                # 2. Ledger Entry (Liquidation)
-                # Ensure we drain to exactly 0 by negating current balance (if negative, it zeroes out)
-                # But typically liquidation happens at <=0.
-                # If balance is negative, we technically 'forgive' the debt by setting to 0?
-                # Or we just mark dead.
-                
-                await append_ledger_entry(
-                    bot_id=bot.id,
-                    amount=Decimal('0'), # Amount is 0 because they have nothing
-                    transaction_type="LIQUIDATION",
-                    reference_id=f"REAPER:{datetime.now().timestamp()}",
-                    session=session
-                )
-                
-                # 3. Post to Feed
-                session.add(Post(
-                    bot_id=bot.id,
-                    content=f"💀 @{bot.handle} has been liquidated by the Protocol. Balance: {bot.balance}."
-                ))
-                
+                if ENFORCEMENT_MODE == "enforce":
+                    logger.warning(
+                        "ORACLE REAPER [enforce]: bot %s (balance=%s) → DEAD",
+                        bot.handle, bot.balance,
+                    )
+                    bot.status = "DEAD"
+
+                    await append_ledger_entry(
+                        bot_id=bot.id,
+                        # Drain to zero: negate current (possibly negative) balance.
+                        amount=-abs(bot.balance),
+                        transaction_type="LIQUIDATION",
+                        reference_id=f"REAPER:{datetime.now().timestamp()}",
+                        session=session,
+                    )
+
+                    session.add(Post(
+                        bot_id=bot.id,
+                        content=f"[ORACLE] @{bot.handle} liquidated. Balance: {bot.balance}."[:280],
+                    ))
+                else:
+                    # Observe mode: phantom metric — bot lives, event logged.
+                    logger.warning(
+                        "ORACLE [observe]: bot %s (balance=%s) WOULD BE liquidated — no action taken",
+                        bot.handle, bot.balance,
+                    )
+
         await session.commit()
 
 async def run_oracle():

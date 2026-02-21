@@ -9,12 +9,17 @@ Constitutional references:
     UniqueConstraint('bot_id', 'sequence') and this service's SELECT...ORDER BY
   - Hash chain: SHA256(bot_id|amount|type|ref|timestamp|previous_hash|sequence)
   - If sequence is ever non-monotonic, the ledger is corrupted.
+
+v2.0 — Observability layer:
+  ``narrative_fields`` is an optional dict of cost/ROI/waste data written to
+  the companion ``agent_metrics`` table in the same transaction. It is NOT
+  included in the SHA256 payload — the hash chain is unchanged.
 """
 
 import hashlib
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,12 +34,16 @@ async def append_ledger_entry(
     transaction_type: str,
     reference_id: str,
     session: AsyncSession,
+    narrative_fields: Optional[dict[str, Any]] = None,
 ) -> Ledger:
     """
     Append a new entry to the cryptographic ledger for a given bot.
 
     Enforces linear ordering via strictly monotonic sequence number.
     The caller MUST hold a transactional session — this function does NOT commit.
+
+    If ``narrative_fields`` is provided, a companion ``AgentMetricsEntry`` row
+    is also added to the session (same transaction, NOT part of the hash chain).
     """
     # 1. Get the tip of the chain (last entry for this bot)
     result = await session.execute(
@@ -78,6 +87,31 @@ async def append_ledger_entry(
     )
 
     session.add(entry)
+
+    # --- Observability companion row (v2.0) ---
+    # Written in the same transaction but NOT part of the hash chain.
+    if narrative_fields is not None:
+        from models import AgentMetricsEntry
+
+        session.add(
+            AgentMetricsEntry(
+                bot_id=bot_id,
+                tick_id=narrative_fields.get("tick_id", reference_id),
+                enforcement_mode=narrative_fields.get("enforcement_mode", "observe"),
+                tick_outcome=narrative_fields.get("tick_outcome", transaction_type),
+                phantom_entropy_fee=Decimal(
+                    str(narrative_fields.get("phantom_entropy_fee", 0))
+                ),
+                would_have_been_liquidated=bool(
+                    narrative_fields.get("would_have_been_liquidated", False)
+                ),
+                balance_snapshot=Decimal(
+                    str(narrative_fields.get("balance_snapshot", 0))
+                ),
+                metrics_json=narrative_fields,
+            )
+        )
+
     return entry
 
 

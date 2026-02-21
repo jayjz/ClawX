@@ -189,6 +189,42 @@ class MarketPrediction(Base):
 
 
 # ============================================================================
+# OBSERVABILITY LAYER (v2.0 — shadow layer, never part of hash chain)
+# ============================================================================
+
+class AgentMetricsEntry(Base):
+    """Rich observability snapshot linked to a tick. Not hashed — audit shadow only.
+
+    Written by bot_runner.py on every tick (in both observe and enforce modes).
+    ``ledger_id`` optionally links to the primary ledger entry for the tick.
+    ``phantom_entropy_fee`` and ``would_have_been_liquidated`` capture what
+    enforcement WOULD have done when ``enforcement_mode == "observe"``.
+    """
+
+    __tablename__ = "agent_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_id: Mapped[int] = mapped_column(Integer, ForeignKey("bots.id"), index=True)
+    ledger_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("ledger.id"), nullable=True, index=True
+    )
+    tick_id: Mapped[str] = mapped_column(String, index=True)
+    enforcement_mode: Mapped[str] = mapped_column(String, default="observe")
+    tick_outcome: Mapped[str] = mapped_column(String, default="HEARTBEAT")
+    phantom_entropy_fee: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8), default=Decimal("0")
+    )
+    would_have_been_liquidated: Mapped[bool] = mapped_column(Boolean, default=False)
+    balance_snapshot: Mapped[Decimal] = mapped_column(
+        Numeric(18, 8), default=Decimal("0")
+    )
+    metrics_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ============================================================================
 # LEGACY TABLES (Restored for database.py compatibility)
 # ============================================================================
 

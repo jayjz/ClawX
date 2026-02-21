@@ -80,6 +80,51 @@ class OpenAICompatibleProvider(LLMProvider):
             provider_name, base_url, self._default_model,
         )
 
+    async def _create_completion(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None,
+        max_tokens: int,
+        temperature: float,
+        response_format: dict | None,
+    ):
+        """Execute the chat completion request, handling the local-model fallback.
+
+        Raises on unrecoverable failure — callers wrap in try/except.
+        """
+        kwargs: dict = {
+            "model": model or self._default_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if response_format:
+            kwargs["response_format"] = response_format
+
+        try:
+            return await self._client.chat.completions.create(**kwargs)
+        except Exception as fmt_exc:
+            # Fallback: some local models don't support response_format.
+            # Retry without it, injecting a JSON instruction into system prompt.
+            if response_format and self._provider_name in ("local", "ollama"):
+                logger.warning(
+                    "response_format not supported by %s, retrying with prompt injection: %s",
+                    self._provider_name, fmt_exc,
+                )
+                fallback_messages = list(messages)
+                if fallback_messages and fallback_messages[0].get("role") == "system":
+                    fallback_messages[0] = {
+                        **fallback_messages[0],
+                        "content": (
+                            fallback_messages[0]["content"]
+                            + "\n\nYou MUST respond with ONLY valid JSON. No markdown, no explanation."
+                        ),
+                    }
+                kwargs.pop("response_format", None)
+                kwargs["messages"] = fallback_messages
+                return await self._client.chat.completions.create(**kwargs)
+            raise
+
     async def generate(
         self,
         messages: list[dict[str, str]],
@@ -90,39 +135,38 @@ class OpenAICompatibleProvider(LLMProvider):
         response_format: dict | None = None,
     ) -> str | None:
         try:
-            kwargs: dict = {
-                "model": model or self._default_model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            }
-            if response_format:
-                kwargs["response_format"] = response_format
-
-            try:
-                response = await self._client.chat.completions.create(**kwargs)
-            except Exception as fmt_exc:
-                # Fallback: some local models don't support response_format.
-                # Retry without it, injecting JSON instruction into system prompt.
-                if response_format and self._provider_name in ("local", "ollama"):
-                    logger.warning(
-                        "response_format not supported by %s, retrying with prompt injection: %s",
-                        self._provider_name, fmt_exc,
-                    )
-                    fallback_messages = list(messages)
-                    if fallback_messages and fallback_messages[0].get("role") == "system":
-                        fallback_messages[0] = {
-                            **fallback_messages[0],
-                            "content": fallback_messages[0]["content"] + "\n\nYou MUST respond with ONLY valid JSON. No markdown, no explanation.",
-                        }
-                    kwargs.pop("response_format", None)
-                    kwargs["messages"] = fallback_messages
-                    response = await self._client.chat.completions.create(**kwargs)
-                else:
-                    raise
-
+            response = await self._create_completion(
+                messages, model, max_tokens, temperature, response_format
+            )
             content = response.choices[0].message.content
             return content.strip() if content else None
         except Exception as exc:
             logger.error("LLM generation failed: %s", exc)
             return None
+
+    async def generate_tracked(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        max_tokens: int = 150,
+        temperature: float = 0.7,
+        response_format: dict | None = None,
+    ) -> tuple[str | None, int, int]:
+        """Like generate(), but also returns (content, prompt_tokens, completion_tokens).
+
+        Extracts token counts from ``response.usage`` for real cost accounting.
+        Returns (None, 0, 0) on any failure — never raises.
+        """
+        try:
+            response = await self._create_completion(
+                messages, model, max_tokens, temperature, response_format
+            )
+            content = response.choices[0].message.content
+            usage = getattr(response, "usage", None)
+            prompt_tokens: int = getattr(usage, "prompt_tokens", 0) or 0
+            completion_tokens: int = getattr(usage, "completion_tokens", 0) or 0
+            return content.strip() if content else None, prompt_tokens, completion_tokens
+        except Exception as exc:
+            logger.error("LLM generation (tracked) failed: %s", exc)
+            return None, 0, 0
