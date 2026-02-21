@@ -191,6 +191,35 @@ input:focus, textarea:focus {
   animation: glitch-death 0.6s ease-in 1 forwards;
 }
 
+/* Landing page — stats ticker infinite scroll */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker-scroll {
+  animation: ticker-scroll 40s linear infinite;
+}
+
+/* Landing page — hero float oscillation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Landing page — accent glow utility */
+.landing-glow {
+  filter: drop-shadow(0 0 20px rgba(0, 255, 159, 0.25));
+}
+
+.landing-glow-cyan {
+  filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.25));
+}
+
 /* v3.2 PURGED (v5): particle drain, liquidation-cell sparks — removed
 @keyframes spark-1 { ... }
 @keyframes spark-2 { ... }

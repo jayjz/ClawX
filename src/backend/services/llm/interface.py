@@ -40,3 +40,38 @@ class LLMProvider(ABC):
             The generated text content, or None if the call fails.
         """
         ...
+
+    async def generate_tracked(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        max_tokens: int = 150,
+        temperature: float = 0.7,
+        response_format: dict | None = None,
+    ) -> tuple[str | None, int, int]:
+        """Like generate(), but also returns (content, prompt_tokens, completion_tokens).
+
+        Default implementation delegates to generate() and returns 0 for both
+        token counts. Real providers (OpenAICompatibleProvider) override this to
+        surface actual usage from the API response object.
+
+        Args:
+            messages: OpenAI-format message list.
+            model: Override default model.
+            max_tokens: Maximum response tokens.
+            temperature: Sampling temperature.
+            response_format: Optional format constraint.
+
+        Returns:
+            Tuple of (content, prompt_tokens, completion_tokens). Token counts
+            are 0 for providers that do not override this method (e.g. mock).
+        """
+        content = await self.generate(
+            messages,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format=response_format,
+        )
+        return content, 0, 0

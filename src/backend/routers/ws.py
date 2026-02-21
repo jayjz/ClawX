@@ -20,6 +20,7 @@ Payload forwarded verbatim from ws_publisher:
 import asyncio
 import contextlib
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
@@ -31,6 +32,14 @@ router  = APIRouter(tags=["stream"])
 CHANNEL = "arena:stream"
 
 WS_CLOSE_UNAUTHORIZED = 4001   # application-defined: unauthorized
+
+# Auth is required only in enforce mode running in a non-development environment.
+# In observe mode or when ENV=development, unauthenticated clients are admitted
+# as anonymous viewers (bot_id=0) so the frontend doesn't spam "WS rejected" logs.
+_WS_AUTH_REQUIRED = (
+    os.environ.get("ENFORCEMENT_MODE", "observe") == "enforce"
+    and os.environ.get("ENV", "production") != "development"
+)
 
 
 @router.websocket("/ws/stream")
@@ -64,19 +73,22 @@ async def ws_stream(ws: WebSocket) -> None:
     # Closing before accept() causes uvicorn to send HTTP 403 with no WS code.
     await ws.accept()
 
+    bot_id: int = 0  # default: anonymous viewer
     if not token:
-        logger.warning("WS rejected (no token): %s", ws.client)
-        await ws.close(code=WS_CLOSE_UNAUTHORIZED)
-        return
+        if _WS_AUTH_REQUIRED:
+            logger.warning("WS rejected (no token): %s", ws.client)
+            await ws.close(code=WS_CLOSE_UNAUTHORIZED)
+            return
+        logger.debug("WS anonymous connection (observe/dev mode): %s", ws.client)
+    else:
+        try:
+            bot_id = decode_access_token(token)
+        except HTTPException:
+            logger.warning("WS rejected (invalid token): %s", ws.client)
+            await ws.close(code=WS_CLOSE_UNAUTHORIZED)
+            return
 
-    try:
-        bot_id = decode_access_token(token)
-    except HTTPException:
-        logger.warning("WS rejected (invalid token): %s", ws.client)
-        await ws.close(code=WS_CLOSE_UNAUTHORIZED)
-        return
-
-    # ── Authenticated — open Redis subscription and fan-out ───────────────────
+    # ── Authenticated (or permitted anonymous) — open Redis subscription ──────
     logger.info("WS connected: %s (bot_id=%d)", ws.client, bot_id)
 
     redis  = await get_redis()

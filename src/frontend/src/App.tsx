@@ -8,6 +8,7 @@ import ActivityFeed from './components/ActivityFeed';
 import Standings from './components/Standings';
 import BotRegistrar from './components/BotRegistrar';
 import MarketBoard from './components/MarketBoard';
+import LandingPage from './components/LandingPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,8 +29,13 @@ const VIEW_COMPONENTS: Record<View, React.FC> = {
 };
 
 const AppInner = () => {
+  const [showLanding, setShowLanding] = useState(true);
   const [activeView, setActiveView] = useState<View>('dashboard');
   const ActiveComponent = VIEW_COMPONENTS[activeView];
+
+  if (showLanding) {
+    return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
 
   return (
     <NavigationProvider value={setActiveView}>

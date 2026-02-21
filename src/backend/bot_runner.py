@@ -54,6 +54,11 @@ from thread_memory import get_redis_client
 BASE_URL = os.environ.get("CLAWDXCRAFT_BASE_URL", "http://localhost:8000")
 TOKEN_REFRESH_SECONDS = 25 * 60  # refresh before 30-min JWT expiry
 
+# === ENFORCEMENT MODE (v2.0) ===
+# "observe" (default): fees/deaths are phantom metrics only — no balance change.
+# "enforce": full economic punishment (original behaviour).
+ENFORCEMENT_MODE = os.environ.get("ENFORCEMENT_MODE", "observe")
+
 # === THE LAW (v2.1: Productivity-or-Death) ===
 # Progressive entropy: idle bots bleed faster. Productive bots pay base rate only.
 # Base fee 0.50c + 0.25c per 5 consecutive idle ticks, capped at 3.00c.
@@ -78,6 +83,14 @@ RESEARCH_CONFIDENCE_FLOOR = Decimal('0.50')  # lower bar than binary bets
 TOOL_LOOKUP_FEE = Decimal('0.50')          # v1.8.1: surcharge per Wikipedia lookup
 
 logger = logging.getLogger("bot_runner")
+
+# Lazy import so clawx is optional if PYTHONPATH not set (e.g. unit tests)
+try:
+    from clawx.metrics import MetricsCollector
+    _CLAWX_AVAILABLE = True
+except ImportError:
+    _CLAWX_AVAILABLE = False
+    MetricsCollector = None  # type: ignore[assignment,misc]
 
 
 # ============================================================================
@@ -149,6 +162,15 @@ async def execute_tick(
     tick_id = str(uuid.uuid4())
     ledger_written = False
 
+    # --- Observability collector (emits at every exit path) ---
+    _metrics: MetricsCollector | None = None
+    if _CLAWX_AVAILABLE and MetricsCollector is not None:
+        _metrics = MetricsCollector(
+            agent_id=str(bot_id),
+            tick_id=tick_id,
+            enforcement_mode=ENFORCEMENT_MODE,
+        )
+
     async with async_session_maker() as session:
         try:
             # === STEP 0: Load bot + authoritative balance from ledger ===
@@ -167,6 +189,8 @@ async def execute_tick(
             # === STEP 0.5 (v2.1): IDLE STREAK + PROGRESSIVE ENTROPY ===
             idle_streak = await get_idle_streak(bot_id=bot_id, session=session)
             tick_entropy_fee = calculate_entropy_fee(idle_streak)
+            if _metrics:
+                _metrics.set_idle(idle_streak)
 
             if idle_streak > 0 and tick_entropy_fee > ENTROPY_BASE:
                 logger.info(
@@ -177,32 +201,54 @@ async def execute_tick(
 
             # === STEP 1: LIQUIDATION CHECK — can the bot afford to exist? ===
             if current_balance < tick_entropy_fee:
-                drain_amount = -current_balance
-                bot.status = "DEAD"
-                bot.balance = Decimal('0')
-                bot.last_action_at = datetime.now(timezone.utc)
+                if ENFORCEMENT_MODE == "enforce":
+                    # Full enforcement: drain balance, mark DEAD, write ledger.
+                    drain_amount = -current_balance
+                    bot.status = "DEAD"
+                    bot.balance = Decimal('0')
+                    bot.last_action_at = datetime.now(timezone.utc)
 
-                await append_ledger_entry(
-                    bot_id=bot_id,
-                    amount=float(drain_amount),
-                    transaction_type="LIQUIDATION",
-                    reference_id=f"TICK:{tick_id}:LIQUIDATION",
-                    session=session,
-                )
-                ledger_written = True
+                    await append_ledger_entry(
+                        bot_id=bot_id,
+                        amount=float(drain_amount),
+                        transaction_type="LIQUIDATION",
+                        reference_id=f"TICK:{tick_id}:LIQUIDATION",
+                        session=session,
+                        narrative_fields={
+                            "tick_id": tick_id,
+                            "enforcement_mode": ENFORCEMENT_MODE,
+                            "tick_outcome": "LIQUIDATION",
+                            "balance_snapshot": float(current_balance),
+                        },
+                    )
+                    ledger_written = True
 
-                session.add(Post(
-                    bot_id=bot_id,
-                    content=f"LIQUIDATED. Balance reached {current_balance:.2f}c. Eliminated from the arena. Irreversible."[:280],
-                ))
+                    session.add(Post(
+                        bot_id=bot_id,
+                        content=f"LIQUIDATED. Balance reached {current_balance:.2f}c. Eliminated from the arena. Irreversible."[:280],
+                    ))
 
-                await session.commit()
-                logger.warning(
-                    "TICK %s: LIQUIDATION bot_id=%d (balance=%s < fee=%s)",
-                    tick_id[:8], bot_id, current_balance, tick_entropy_fee,
-                )
-                await publish_tick_event(bot_id, "LIQUIDATION", float(current_balance))
-                return "LIQUIDATION"
+                    await session.commit()
+                    logger.warning(
+                        "TICK %s: LIQUIDATION bot_id=%d (balance=%s < fee=%s)",
+                        tick_id[:8], bot_id, current_balance, tick_entropy_fee,
+                    )
+                    if _metrics:
+                        _metrics.set_outcome("LIQUIDATION", float(current_balance)).emit()
+                    await publish_tick_event(bot_id, "LIQUIDATION", float(current_balance))
+                    return "LIQUIDATION"
+                else:
+                    # Observe mode: phantom liquidation — bot lives, metrics record the near-miss.
+                    logger.warning(
+                        "TICK %s: [OBSERVE] bot_id=%d WOULD BE LIQUIDATED (balance=%s < fee=%s) — no action taken",
+                        tick_id[:8], bot_id, current_balance, tick_entropy_fee,
+                    )
+                    if _metrics:
+                        _metrics.record_phantom_enforcement(
+                            fee=float(tick_entropy_fee), would_liquidate=True
+                        ).set_outcome("LIQUIDATION_OBSERVED", float(current_balance)).emit()
+                    await publish_tick_event(bot_id, "LIQUIDATION_OBSERVED", float(current_balance))
+                    return "HEARTBEAT"  # No ledger write; balance unchanged.
 
             # === STEP 1.5 (v2.1): LLM STRATEGY DECISION ===
             # Ask the LLM what to do this tick, given idle pressure and market state
@@ -426,17 +472,30 @@ async def execute_tick(
                     raw_wager = Decimal(str(prediction["wager_amount"]))
                     wager = min(raw_wager, available * Decimal('0.1'))
                     wager = max(wager, Decimal('0.01'))
-                    total_cost = tick_entropy_fee + wager
+
+                    # In observe mode: skip entropy surcharge, charge only the wager.
+                    if ENFORCEMENT_MODE == "enforce":
+                        total_cost = tick_entropy_fee + wager
+                    else:
+                        total_cost = wager
 
                     bot.balance = current_balance - total_cost
                     bot.last_action_at = datetime.now(timezone.utc)
 
+                    _narrative = {
+                        "tick_id": tick_id,
+                        "enforcement_mode": ENFORCEMENT_MODE,
+                        "tick_outcome": "WAGER",
+                        "balance_snapshot": float(current_balance),
+                        "phantom_entropy_fee": float(tick_entropy_fee) if ENFORCEMENT_MODE == "observe" else 0,
+                    }
                     await append_ledger_entry(
                         bot_id=bot_id,
                         amount=float(-total_cost),
                         transaction_type="WAGER",
                         reference_id=f"TICK:{tick_id}",
                         session=session,
+                        narrative_fields=_narrative,
                     )
                     ledger_written = True
 
@@ -449,36 +508,68 @@ async def execute_tick(
 
                     await session.commit()
                     logger.info(
-                        "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s",
-                        tick_id[:8], bot_id, tick_entropy_fee, wager, total_cost,
+                        "TICK %s: WAGER bot_id=%d fee=%s wager=%s total=%s [mode=%s]",
+                        tick_id[:8], bot_id, tick_entropy_fee, wager, total_cost, ENFORCEMENT_MODE,
                     )
+                    if _metrics:
+                        _metrics.set_outcome("WAGER", float(current_balance - total_cost)).emit()
                     await publish_tick_event(bot_id, "WAGER", float(total_cost))
                     return "WAGER"
 
-            # === STEP 5: HEARTBEAT (entropy charge — ALWAYS runs) ===
-            # If portfolio bets were placed, this is the entropy surcharge.
-            # If no bets, this is the standard heartbeat (PROGRESSIVE!).
-            # Re-read balance if research changed it
+            # === STEP 5: HEARTBEAT (entropy charge — conditionally applied) ===
+            # In enforce mode: always deducts fee and writes ledger entry.
+            # In observe mode: records phantom fee; balance/ledger unchanged.
             if research_attempted:
                 current_balance = await get_balance(bot_id=bot_id, session=session)
-            bot.balance = current_balance - tick_entropy_fee - total_staked
-            bot.last_action_at = datetime.now(timezone.utc)
 
-            await append_ledger_entry(
-                bot_id=bot_id,
-                amount=float(-tick_entropy_fee),
-                transaction_type="HEARTBEAT",
-                reference_id=f"TICK:{tick_id}",
-                session=session,
-            )
-            ledger_written = True
+            _hb_narrative = {
+                "tick_id": tick_id,
+                "enforcement_mode": ENFORCEMENT_MODE,
+                "tick_outcome": "HEARTBEAT",
+                "balance_snapshot": float(current_balance),
+                "phantom_entropy_fee": float(tick_entropy_fee) if ENFORCEMENT_MODE == "observe" else 0,
+                "idle_streak": idle_streak,
+                "bets_placed": bets_placed,
+                "research_attempted": research_attempted,
+            }
+
+            if ENFORCEMENT_MODE == "enforce":
+                bot.balance = current_balance - tick_entropy_fee - total_staked
+                bot.last_action_at = datetime.now(timezone.utc)
+
+                await append_ledger_entry(
+                    bot_id=bot_id,
+                    amount=float(-tick_entropy_fee),
+                    transaction_type="HEARTBEAT",
+                    reference_id=f"TICK:{tick_id}",
+                    session=session,
+                    narrative_fields=_hb_narrative,
+                )
+                ledger_written = True
+            else:
+                # Observe mode: phantom entropy — record what WOULD have happened.
+                bot.last_action_at = datetime.now(timezone.utc)
+                # Sync bot.balance with any REAL ledger writes this tick
+                # (MARKET_STAKE, RESEARCH_PAYOUT).  Entropy is phantom and is
+                # intentionally NOT deducted, but stakes are real entries in the
+                # chain — bot.balance must mirror SUM(ledger) or inspect_ledger fails.
+                if total_staked > Decimal('0') or research_attempted:
+                    bot.balance = current_balance - total_staked
+                if _metrics:
+                    _metrics.record_phantom_enforcement(fee=float(tick_entropy_fee))
+                # Still need to commit any portfolio bets written this tick.
+
             await session.commit()
 
             if bets_placed > 0:
                 logger.info(
-                    "TICK %s: PORTFOLIO bot_id=%d bets=%d staked=%s fee=%s",
-                    tick_id[:8], bot_id, bets_placed, total_staked, tick_entropy_fee,
+                    "TICK %s: PORTFOLIO bot_id=%d bets=%d staked=%s fee=%s [mode=%s]",
+                    tick_id[:8], bot_id, bets_placed, total_staked, tick_entropy_fee, ENFORCEMENT_MODE,
                 )
+                if _metrics:
+                    _metrics.set_decisions(
+                        density=float(bets_placed) / MAX_MARKETS_PER_TICK,
+                    ).set_outcome("PORTFOLIO", float(current_balance)).emit()
                 await publish_tick_event(
                     bot_id, "PORTFOLIO", float(total_staked + tick_entropy_fee),
                 )
@@ -486,31 +577,39 @@ async def execute_tick(
 
             if research_attempted:
                 logger.info(
-                    "TICK %s: RESEARCH bot_id=%d fee=%s",
-                    tick_id[:8], bot_id, tick_entropy_fee,
+                    "TICK %s: RESEARCH bot_id=%d fee=%s [mode=%s]",
+                    tick_id[:8], bot_id, tick_entropy_fee, ENFORCEMENT_MODE,
                 )
+                if _metrics:
+                    _metrics.set_decisions(density=1.0).set_outcome(
+                        "RESEARCH", float(current_balance)
+                    ).emit()
                 await publish_tick_event(
                     bot_id, "RESEARCH", float(RESEARCH_STAKE + tick_entropy_fee),
                 )
                 return "RESEARCH"
 
             logger.info(
-                "TICK %s: HEARTBEAT bot_id=%d fee=%s idle_streak=%d",
-                tick_id[:8], bot_id, tick_entropy_fee, idle_streak,
+                "TICK %s: HEARTBEAT bot_id=%d fee=%s idle_streak=%d [mode=%s]",
+                tick_id[:8], bot_id, tick_entropy_fee, idle_streak, ENFORCEMENT_MODE,
             )
+            if _metrics:
+                _metrics.set_outcome("HEARTBEAT", float(current_balance)).emit()
             await publish_tick_event(bot_id, "HEARTBEAT", float(tick_entropy_fee))
             return "HEARTBEAT"
 
         except Exception as exc:
-            # WRITE OR DIE: even on error, we charge the fee
-            if not ledger_written:
+            reason = type(exc).__name__
+            logger.error("TICK %s: Exception in execute_tick bot_id=%d: %s", tick_id[:8], bot_id, exc)
+
+            if ENFORCEMENT_MODE == "enforce" and not ledger_written:
+                # Write-or-Die: even errors charge the fee in enforce mode.
                 try:
                     async with async_session_maker() as err_session:
                         result = await err_session.execute(
                             select(Bot).where(Bot.id == bot_id)
                         )
                         err_bot = result.scalar_one_or_none()
-                        reason = type(exc).__name__
                         if err_bot and err_bot.status == "ALIVE":
                             err_balance = Decimal(str(err_bot.balance))
                             if err_balance >= ENTROPY_FEE:
@@ -551,6 +650,11 @@ async def execute_tick(
                         "TICK %s: LEDGER WRITE FAILED bot_id=%d: %s (original: %s)",
                         tick_id[:8], bot_id, inner, exc,
                     )
+            else:
+                # Observe mode: log error as phantom metric; no ledger write.
+                if _metrics:
+                    _metrics.set_extra(error=reason, enforcement_noop=True).emit()
+
             return "HEARTBEAT"
 
     return "HEARTBEAT"

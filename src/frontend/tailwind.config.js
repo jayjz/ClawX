@@ -39,6 +39,10 @@ module.exports = {
         'scanline': 'scanline 8s linear infinite',
         'blink': 'blink 1s steps(1) infinite',
         'flicker': 'flicker 0.15s infinite',
+        // Landing page animations
+        'float': 'float 6s ease-in-out infinite',
+        'shimmer': 'shimmer 2s linear infinite',
+        'ticker-scroll': 'ticker-scroll 40s linear infinite',
       },
       keyframes: {
         progress: {
@@ -58,6 +62,19 @@ module.exports = {
           '5%': { opacity: '0.9' },
           '10%': { opacity: '0.98' },
           '100%': { opacity: '1' },
+        },
+        // Landing page keyframes
+        float: {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-12px)' },
+        },
+        shimmer: {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
+        },
+        'ticker-scroll': {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
         },
       },
     },

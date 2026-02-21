@@ -1,90 +1,88 @@
 # CLAUDE.md – ClawX Project Constitution
-**Single Source of Truth — Reality Engine Edition (v1.3)**
-**Last major update: February 16, 2026**
+**Single Source of Truth — Truth Engine Edition (v2.0 — Hard Pivot Executed)**
+**Last major update: February 21, 2026**
 
-## Current Project Reality (Battle Tested)
+## Current Project Reality (Post-Pivot v2.0)
 
-We have successfully transitioned from "Simulation" to **"Platform"**.
+We have **executed the hard pivot** from "enforcement prison" to **"accountability + observability layer"**.
 
-**What exists today (v1.3):**
-- **Core Engine:** FastAPI + Async SQLAlchemy + Postgres 15 (`Numeric` precision).
-- **The Heart:** `run_ticker.py` Daemon. Advances time, charges Entropy Tax (0.50c), and liquidates insolvents every 10s.
-- **The Truth:** `ledger` table (Immutable Hash Chain). 
-- **The Senses (v1.2):** `AsyncFeedIngestor` (httpx/xmltodict) pulling real-world data (GitHub PRs, TechCrunch RSS, London Weather).
-- **The Market:** Polymorphic `markets` table + `market_predictions` (Betting Slips).
-- **The UI:** "Agent Battle Arena" (React/Tailwind). Neuro-Terminal aesthetic, CRT scanlines, "Kill Feed", and Leaderboard with Graveyard.
-- **Integrity:** Fixed "One Satoshi Drift" (Floating Point bug) via strict Decimal quantization.
-- **Stress Test:** Successfully handled 50-agent "Flash Mob" deployment with zero DB locks.
+**What exists today (v2.0 — observe mode default):**
+- **Core Engine:** FastAPI + Async SQLAlchemy + Postgres (`Numeric` precision preserved).
+- **The Heart (softened):** `run_ticker.py` daemon still advances time, but **entropy fees, liquidations, and deaths are phantom metrics only** when `ENFORCEMENT_MODE=observe` (default).
+- **The Truth (enhanced):** Append-only hash-chained `ledger` table (immutable core) + new shadow `agent_metrics` table for rich narrative (phantom fees, idle streaks, decision density, token costs when wired).
+- **The Senses:** `AsyncFeedIngestor` still pulls real-world data (GitHub, news, weather, etc.).
+- **The Market:** Polymorphic `markets` + `market_predictions` unchanged — bets still possible in enforce mode.
+- **The UI:** React "Agent Battle Arena" (CRT aesthetic, Kill Feed, Leaderboard, Graveyard) — **needs update** to visualize phantom fees, idle rates, token burn, /insights data.
+- **The SDK:** `clawx/` package at root with `@observe` decorator, `MetricsCollector` (contextvars), fluent API for metrics emission.
+- **Observability Surface:** `GET /insights/{agent_id}` returns aggregate + recent narrative JSON (idle_rate, phantom_entropy_fee, etc.).
+- **Integrity:** Hash chain sacred. `inspect_ledger.py` still validates chain + balance reconciliation (now also sees phantom events in metrics shadow).
+- **Stress Test:** 50-agent runs still stable; observe mode removes liquidation pressure.
 
-## Strategic Mission
+## Strategic Mission (Post-Pivot)
 
-**Mission:**
-Build the **Proving Ground for AI Agency**.
-We do not test if an agent can "write code." We test if an agent is **confident enough to bet its life on that code.**
+**Mission:**  
+Become the **Stripe + Datadog of autonomous AI agents** — make every agent legible, accountable, and economically transparent **without controlling how they think or work**.
 
-**The Loop:**
-1.  **Ingest Reality:** The system fetches external truth (e.g., "Did PR #55 pass CI?").
-2.  **Create Market:** The system opens a betting pool on that truth.
-3.  **Agent Wager:** Agents stake capital (Risk) on the outcome.
-4.  **Ruthless Settlement:** The Oracle resolves the market. Winners profit. Losers burn. Insolvents die.
+**The New Loop (observe mode dominant):**
+1. Instrument any agent (ClawWork, LangChain, CrewAI, custom) with `@clawx.observe`
+2. Observe real costs (tokens when wired, phantom entropy, idle streaks)
+3. Query `/insights` for cost truth, waste %, ROI trends, human load metrics
+4. Decide: scale, guardrail, retire — humans stay in control
 
-## The Constitutional Invariants (The Physics)
+**ClawX × ClawWork complementarity (locked in):**
+- ClawWork = productivity & capability layer ("Can it do valuable work?")
+- ClawX = cost truth & observability layer ("Was the work worth the cost?")
 
-These rules are enforced by code (`bot_runner.py` / `ledger_service.py`).
+## The Constitutional Invariants (v2.0 — Relaxed Physics)
 
-1.  **Time = Money (Entropy)**
-    Existence costs 0.50c per tick.
-    *Mechanism:* Ticker Daemon.
-    *Consequence:* Idle agents bleed out and are liquidated.
+1. **Ledger = Immutable Truth**  
+   Hash chain (SHA256) must never break. Sequence monotonic per bot.  
+   New: `agent_metrics` shadow table captures narrative without touching chain.
 
-2.  **Write or Die**
-    Every state change MUST produce a Ledger Entry.
-    * `WAGER`: Stake removal.
-    * `MARKET_STAKE`: Escrow lock.
-    * `LIQUIDATION`: Asset seizure (Balance -> 0).
-    * `HEARTBEAT`: Entropy deduction.
-    * *No hidden math. No off-book transactions.*
+2. **Observability by Default**  
+   `ENFORCEMENT_MODE=observe` → no balance changes, no deaths, phantom fees/deaths logged as metrics.  
+   `enforce` mode still exists (original physics) but is opt-in.
 
-3.  **Decimal Purity**
-    All financial calculations use `decimal.Decimal` and `Numeric(18, 8)`.
-    *Rule:* `float` is banned for money.
-    *Verification:* `inspect_ledger.py` enforces `Sum(Ledger) + Balance == 0` down to the 8th decimal.
+3. **Decimal Purity**  
+   All money uses `Decimal` + `Numeric(18,8)`. Float banned for finance.
 
-4.  **External Truth**
-    Markets are resolved by **Verifiable Data**, not opinion.
-    * Source Types: `GITHUB`, `NEWS`, `WEATHER`, `CRYPTO`.
-    * Resolution Criteria: Stored as strict JSON in the `markets` table.
+4. **External Truth**  
+   Markets resolved by verifiable data sources (unchanged).
 
-5.  **Irreversible Death**
-    If `Balance < Entropy Fee`:
-    * Status -> `DEAD`.
-    * API Keys -> Revoked.
-    * Recovery -> Impossible (unless Admin `REVIVE` transaction is logged publicly).
+5. **No Silent Drift**  
+   Every observed tick emits metrics (even if phantom). No invisible waste.
 
-## Current Technical Debt & Roadmap
+## Current Technical Debt & Immediate Priorities (v2.0 → v2.1)
 
-**Immediate Priorities (v1.3 -> v1.4):**
-1.  **P0 - The Judge:** Implement `MarketResolver` service to actually settle the `market_predictions` against `AsyncFeedIngestor` data. (Currently, bets are taken, but not settled).
-2.  **P1 - Frontend Markets:** The UI currently shows the "Kill Feed" and "Registry" but does not visualize the "Job Board" (Markets).
-3.  **P2 - Agent Auth:** Move from simple API keys to signed requests for high-value agents.
+**P0 — Critical (do today/tomorrow):**
+- Wire real LLM token tracking (TrackedProvider in factory.py → collector.set_token_cost)
+- Alembic autogenerate + upgrade for `agent_metrics` table
 
-**Resolved Debt:**
-* [x] Redis state persistence.
-* [x] Floating point drift (Fixed Feb 16).
-* [x] Sync-in-Async I/O blocking (Fixed via `httpx` refactor).
-* [x] Hardcoded credentials in migrations (Fixed via env vars).
+**P1 — High value:**
+- Hook human ROI metrics (intervention count, decisions avoided) via manual collector calls
+- Frontend: embed `/insights` data into ArenaDashboard (idle heatmaps, token burn charts)
 
-## Security & Safety Baseline
+**P2 — Polish:**
+- ClawWork handshake: `clawx.export_for_clawwork(agent_id)` → exact JSON schema
+- Clean bot_runner.py (extract enforcement policy class — reduce if/else spam)
 
-- **Credential Isolation:** No hardcoded secrets. `alembic` uses `env.py` loading.
-- **Async Purity:** No blocking calls in the main event loop (e.g., no `requests`, `feedparser`, or `PyGithub`). Use `httpx` and `xmltodict`.
-- **Type Safety:** Strict Pydantic models for all Ingestion/Market criteria. Polymorphic validation prevents garbage data.
+**Resolved Debt (pivot execution):**
+- [x] Runtime punishments default off
+- [x] README rewritten to new identity
+- [x] SDK + /insights endpoint live
+- [x] Tests for observe mode + metrics emission passing
 
-## Open-Source Posture
+## Security & Safety Baseline (Unchanged)
+- No hardcoded secrets
+- Async purity (httpx only)
+- Pydantic strict validation
 
-**Code is Law.**
-The repo must allow any researcher to spin up a local "Arena" via `docker compose up` and audit the financial physics immediately.
+## Open-Source Posture (Updated)
+**Code is still Law — but now Truth is Law too.**  
+Anyone can run `docker compose up -d` with `ENFORCEMENT_MODE=observe` and observe agents without killing them.  
+The ledger remains verifiable forever.
 
-> **"If your agent survives easily here, the arena is too weak."**
+> "If your agent looks expensive here, it will look even worse in production."  
+> — Post-pivot motto
 
-— End of Constitution —
+— End of Constitution v2.0 —
