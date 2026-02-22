@@ -32,7 +32,14 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
     return () => clearInterval(t);
   }, []);
 
-  const openMarkets = markets?.length ?? 0;
+  const openMarkets    = markets?.length ?? 0;
+  const aliveCount     = bots?.filter((b) => b.status === 'ALIVE').length ?? 0;
+  const deadCount      = bots?.filter((b) => b.status === 'DEAD').length ?? 0;
+  const totalBots      = bots?.length ?? 0;
+  const totalEconomy   = bots?.reduce((sum, b) => sum + Number(b.balance), 0) ?? 0;
+  const avgBalance     = aliveCount > 0 ? totalEconomy / aliveCount : 0;
+  const lethality      = totalBots > 0 ? (deadCount / totalBots) * 100 : 0;
+  const researchMkts   = markets?.filter((m) => m.source_type === 'RESEARCH').length ?? 0;
 
   return (
     <div className="h-screen flex flex-col bg-terminal-deep text-zinc-400 font-mono overflow-hidden">
@@ -41,50 +48,73 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       <div className="scanline" />
 
       {/* System Warning Banner */}
-      <div className="bg-alert-red/10 border-b border-alert-red/40 text-alert-red text-[9px] uppercase font-bold tracking-[0.2em] text-center py-1 flex items-center justify-center gap-2">
+      <div className="bg-black/70 backdrop-blur-sm border-b border-accent-red/20 text-alert-red text-[9px] uppercase font-bold tracking-[0.2em] text-center py-1 flex items-center justify-center gap-2" style={{ boxShadow: 'inset 0 -1px 0 rgba(255,59,48,0.08)' }}>
         <AlertTriangle size={9} />
         HIGH-ENTROPY ARENA // INACTION PENALIZED // LOSSES IRREVERSIBLE
         <AlertTriangle size={9} />
       </div>
 
       {/* Top Bar */}
-      <header className="min-h-[48px] flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
+      <header className="min-h-[64px] flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
           <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
           <span className="text-zinc-700">// v2.1</span>
         </div>
-        <div className="header-button-row flex items-center gap-4">
+        <div className="header-button-row flex items-center gap-3 flex-nowrap overflow-x-auto snap-x snap-mandatory">
           <SystemHeader bots={bots} />
-          <span className="text-zinc-700">|</span>
-          <span className="text-zinc-600 font-mono">{clock}</span>
-          <span className="text-zinc-700">|</span>
+          <span className="text-zinc-700 snap-start">|</span>
+          <span className="text-zinc-600 font-mono snap-start">{clock}</span>
+          <span className="text-zinc-700 snap-start">|</span>
           <button
             onClick={() => setIsHelpOpen(true)}
-            className="text-zinc-600 hover:text-neon-green transition-colors flex items-center gap-1"
+            className="cyber-button snap-start"
             title="System Manual"
           >
             <HelpCircle size={12} />
-            <span className="text-[9px] uppercase tracking-wider">MANUAL</span>
+            <span>MANUAL</span>
           </button>
         </div>
       </header>
 
-      {/* Nav Tabs */}
-      <nav className="flex items-center gap-1 px-4 py-2 border-b border-terminal-border bg-terminal-black shrink-0">
-        {(Object.keys(VIEW_LABELS) as View[]).map((view) => (
-          <button
-            key={view}
-            onClick={() => onViewChange(view)}
-            className={`px-4 py-1.5 text-[10px] uppercase tracking-wider border transition-all ${
-              activeView === view
-                ? 'border-neon-green/50 text-neon-green bg-neon-green/5'
-                : 'border-transparent text-zinc-600 hover:text-zinc-300 hover:bg-white/5'
-            }`}
-          >
-            {VIEW_LABELS[view]}
-          </button>
-        ))}
+      {/* Nav: metrics-first — live pills + view tabs */}
+      <nav className="flex items-center border-b border-terminal-border bg-black/80 backdrop-blur-sm shrink-0">
+        {/* Live metric pills */}
+        <div className="flex items-center gap-2 px-4 py-2 border-r border-terminal-border shrink-0">
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-green/30 bg-accent-green/5">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse shrink-0" />
+            <span className="text-[9px] font-mono font-bold text-accent-green tabular-nums">{aliveCount}</span>
+            <span className="text-[9px] font-mono text-accent-green/70 uppercase tracking-widest">ALIVE</span>
+          </div>
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-amber/30 bg-accent-amber/5">
+            <span className="text-[9px] font-mono font-bold text-accent-amber tabular-nums">{avgBalance.toFixed(0)}c</span>
+            <span className="text-[9px] font-mono text-accent-amber/70 uppercase tracking-widest">EFF</span>
+          </div>
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-cyan/30 bg-accent-cyan/5">
+            <span className="text-[9px] font-mono font-bold text-accent-cyan tabular-nums">{researchMkts}</span>
+            <span className="text-[9px] font-mono text-accent-cyan/70 uppercase tracking-widest">RSC</span>
+          </div>
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-red/30 bg-accent-red/5">
+            <span className="text-[9px] font-mono font-bold text-accent-red tabular-nums">{lethality.toFixed(0)}%</span>
+            <span className="text-[9px] font-mono text-accent-red/70 uppercase tracking-widest">DEATH</span>
+          </div>
+        </div>
+        {/* View tabs */}
+        <div className="flex items-center gap-1 px-4 py-2 overflow-x-auto">
+          {(Object.keys(VIEW_LABELS) as View[]).map((view) => (
+            <button
+              key={view}
+              onClick={() => onViewChange(view)}
+              className={`px-4 py-1.5 text-[10px] uppercase tracking-wider border transition-all whitespace-nowrap ${
+                activeView === view
+                  ? 'border-neon-green/50 text-neon-green bg-neon-green/5'
+                  : 'border-transparent text-zinc-600 hover:text-zinc-300 hover:bg-white/5'
+              }`}
+            >
+              {VIEW_LABELS[view]}
+            </button>
+          ))}
+        </div>
       </nav>
 
       {/* Main Content */}

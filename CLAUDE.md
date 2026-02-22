@@ -149,13 +149,27 @@ If a metric does not help answer these, it does not belong.
 
 ## Current Priorities (v2.2)
 
+**Done — Frontend v3.1 (2026-02-22)**
+- Arena now has instant economic legibility on click — every agent node opens viability modal
+- AgentViabilityModal: 2×2 MetricTile grid (RESEARCH EFFICIENCY, IDLE STREAKS, TOOL USES, PORTFOLIO WINS)
+- AgentTopology nodes: click + Enter key → open modal
+- TerminalLayout nav: metrics-first with live ALIVE/EFF/RSC/DEATH pills + glassmorphic backdrop
+
+**Done — Frontend v3.0 (2026-02-22)**
+- Arena now feels like a living 2026 coliseum in observe mode
+- Live scrolling ticker (tripledItems + gapless -33.333% marquee)
+- Breathing deploy button (cyber-button--epic, animate-gate-breathe)
+- Glassmorphic panels (backdrop-blur-sm, titan-grey/80, rounded-xl)
+- Header snap-scroll no-clip (scroll-snap-type x mandatory, snap-start children)
+- Empty ticker placeholder (AWAITING FIRST BLOOD guard)
+
 **P0 — Critical**
 - Wire real LLM token tracking via `TrackedProvider`
 - Alembic autogenerate + migrate `agent_metrics`
 
 **P1 — High Value**
 - Human load metrics (interventions, decisions avoided)
-- Frontend: replace “Arena” metaphors with cost & clarity views
+- Frontend: replace “Arena” metaphors with cost & clarity views (in progress)
 - `/insights` stability and zero-data guards
 
 **P2 — Polish**

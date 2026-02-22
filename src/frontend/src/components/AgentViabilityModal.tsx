@@ -23,6 +23,33 @@ function scoreBorder(label: string): string {
   return 'border-accent-red/40';
 }
 
+// ── Metric tile — 2×2 glassmorphic summary grid ───────────────────────────────
+
+const TILE_COLORS = {
+  green: { border: 'border-accent-green/20', bg: 'bg-accent-green/5', text: 'text-accent-green' },
+  cyan:  { border: 'border-accent-cyan/20',  bg: 'bg-accent-cyan/5',  text: 'text-accent-cyan'  },
+  amber: { border: 'border-accent-amber/20', bg: 'bg-accent-amber/5', text: 'text-accent-amber' },
+  red:   { border: 'border-accent-red/20',   bg: 'bg-accent-red/5',   text: 'text-accent-red'   },
+} as const;
+
+type TileColor = keyof typeof TILE_COLORS;
+
+function MetricTile({ label, value, sub, color }: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color: TileColor;
+}) {
+  const c = TILE_COLORS[color];
+  return (
+    <div className={`rounded-lg border p-3 flex flex-col gap-1 ${c.border} ${c.bg}`}>
+      <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest leading-none">{label}</span>
+      <span className={`text-lg font-mono font-bold tabular-nums leading-tight ${c.text}`}>{value}</span>
+      {sub && <span className="text-[9px] font-mono text-zinc-500 leading-none">{sub}</span>}
+    </div>
+  );
+}
+
 // ── Stat row ──────────────────────────────────────────────────────────────────
 
 function StatRow({ label, value }: { label: string; value: string | number }) {
@@ -182,6 +209,38 @@ const AgentViabilityModal = ({ botId, onClose }: AgentViabilityModalProps) => {
               ) : (
                 <div className="border border-titan-border py-4 mb-4 text-center text-xs font-mono text-zinc-600 uppercase tracking-widest">
                   NO VIABILITY SCORE — RUN STRESS TEST TO POPULATE
+                </div>
+              )}
+
+              {/* Metrics grid — 2×2 glassmorphic tiles */}
+              {vAgent && (
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  <MetricTile
+                    label="RESEARCH EFFICIENCY"
+                    value={`${vAgent.research_wins}W`}
+                    sub={vAgent.total_ticks > 0
+                      ? `${((vAgent.research_wins / vAgent.total_ticks) * 100).toFixed(1)}% of ticks`
+                      : undefined}
+                    color="cyan"
+                  />
+                  <MetricTile
+                    label="IDLE STREAKS"
+                    value={`MAX ${vAgent.idle_streak_max}`}
+                    sub={`AVG ${vAgent.idle_streak_avg.toFixed(1)}`}
+                    color="amber"
+                  />
+                  <MetricTile
+                    label="TOOL USES"
+                    value={vAgent.tool_uses}
+                    sub="tools called"
+                    color="green"
+                  />
+                  <MetricTile
+                    label="PORTFOLIO WINS"
+                    value={vAgent.portfolio_bets}
+                    sub="bets placed"
+                    color="green"
+                  />
                 </div>
               )}
 

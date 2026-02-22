@@ -43,6 +43,7 @@ module.exports = {
         'float': 'float 6s ease-in-out infinite',
         'shimmer': 'shimmer 2s linear infinite',
         'ticker-scroll': 'ticker-scroll 40s linear infinite',
+        'marquee':        'marquee 28s linear infinite',
       },
       keyframes: {
         progress: {
@@ -75,6 +76,10 @@ module.exports = {
         'ticker-scroll': {
           '0%': { transform: 'translateX(0)' },
           '100%': { transform: 'translateX(-50%)' },
+        },
+        'marquee': {
+          '0%':   { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-33.333%)' },
         },
       },
     },

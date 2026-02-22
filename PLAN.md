@@ -1,3 +1,42 @@
+# Plan: Modern 2026 Agent Dashboard (Frontend v3.1) — COMPLETED 2026-02-22
+
+**Status: ALL STEPS COMPLETE**
+**Achieved:** agent click metrics pop-up, metrics-first navbar, glassmorphic MetricTile grid, topology click-to-modal, live ALIVE/EFF/RSC/DEATH nav pills.
+
+| Step | Item | Status |
+|------|------|--------|
+| 1  | AgentViabilityModal: MetricTile component + TILE_COLORS const | ✅ Done |
+| 2  | AgentViabilityModal: 2×2 grid (RESEARCH EFF, IDLE, TOOLS, PORTFOLIO) | ✅ Done |
+| 3  | AgentTopology: onAgentClick? optional prop added | ✅ Done |
+| 4  | AgentTopology: SVG g onClick → setSelectedIdx + onAgentClick?.(bot) | ✅ Done |
+| 5  | AgentTopology: Enter key → onAgentClick?.(nodes[idx].bot) | ✅ Done |
+| 6  | ArenaDashboard: pass onAgentClick to AgentTopology | ✅ Done |
+| 7  | TerminalLayout: aliveCount/avgBalance/lethality/researchMkts computed | ✅ Done |
+| 8  | TerminalLayout: nav redesigned — metrics pills left + tabs right | ✅ Done |
+| 9  | nav pills: rounded-full glassmorphic, accent-colored, backdrop-blur-sm | ✅ Done |
+| 10 | tsc --noEmit: 0 errors | ✅ Done |
+
+---
+
+# Plan: Modern 2026 Agent Dashboard (Frontend v3.0) — COMPLETED 2026-02-22
+
+**Status: ALL STEPS COMPLETE**
+**Achieved:** live scrolling ticker, breathing deploy button, glassmorphic panels, no-clip header snap-scroll, empty ticker placeholder, cyber-button--epic accent-green breathing variant.
+
+| Step | Item | Status |
+|------|------|--------|
+| 1 | TickerBar: tripledItems + -33.333% marquee keyframe | ✅ Done |
+| 2 | TickerBar: empty-state guard (AWAITING FIRST BLOOD) | ✅ Done |
+| 3 | tailwind.config.js: marquee keyframe at translateX(-33.333%) | ✅ Done |
+| 4 | index.css: cyber-button--epic + epic-breathe keyframe | ✅ Done |
+| 5 | index.css: .header-button-row scroll-snap-type x mandatory | ✅ Done |
+| 6 | index.css: .header-button-row > * scroll-snap-align start | ✅ Done |
+| 7 | TerminalLayout: snap-x snap-mandatory + snap-start on all children | ✅ Done |
+| 8 | ArenaDashboard: glassmorphic panels (backdrop-blur-sm, titan-grey/80) | ✅ Done |
+| 9 | Dot: pure Tailwind bg-lime-400 animate-pulse shadow-[0_0_8px_#00ff9f] | ✅ Done |
+
+---
+
 # Plan: Agent Strategy Layer v1.6
 
 **Mission:** Upgrade bots from single-action ticks to portfolio-aware strategists. Bots see live markets, evaluate multiple opportunities per tick, and place multi-bet portfolios — all while preserving the Write-or-Die invariant.

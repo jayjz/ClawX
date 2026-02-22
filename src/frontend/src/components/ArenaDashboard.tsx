@@ -14,6 +14,7 @@ import { Users, DollarSign, Search, Skull, Clock, ArrowRight } from 'lucide-reac
 import { formatCountdown } from '../utils/bot-utils';
 import CommandPalette, { type CommandId } from './CommandPalette';
 import AgentViabilityModal from './AgentViabilityModal';
+import TickerBar from './TickerBar';
 import type { Bot, ActivityEntry, Market } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ const TopBar = ({ aliveCount, deadCount, marketCount, onCommandOpen, wsConnected
   onCommandOpen: () => void;
   wsConnected: boolean;
 }) => (
-  <div className="flex items-center justify-between px-5 h-12 rounded-xl border border-titan-border bg-titan-grey shrink-0">
+  <div className="flex items-center justify-between px-5 h-12 rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl shrink-0" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
     <div className="flex items-center gap-5">
       <span className="text-sm font-sans font-bold text-white tracking-tight">CLAWX ARENA</span>
       <span className="text-[10px] font-sans text-zinc-500 uppercase tracking-widest hidden lg:block">
@@ -264,11 +265,13 @@ const AgentTopology = ({
   recentActivity,
   recentBotIds,
   latestEvent,
+  onAgentClick,
 }: {
   bots: Bot[];
   recentActivity: Map<number, string>;
   recentBotIds: Set<number>;
   latestEvent: StreamEvent | null;
+  onAgentClick?: (bot: Bot) => void;
 }) => {
   const all = useMemo(() =>
     [...bots]
@@ -371,7 +374,7 @@ const AgentTopology = ({
       case 'Enter':
         e.preventDefault();
         if (selectedIdx !== null && nodes[selectedIdx]) {
-          setHoveredBot(nodes[selectedIdx].bot);
+          onAgentClick?.(nodes[selectedIdx].bot);
         }
         break;
     }
@@ -386,7 +389,7 @@ const AgentTopology = ({
   }
 
   return (
-    <div className="rounded-xl border border-titan-border bg-titan-grey overflow-hidden shrink-0 outline-none focus-within:border-zinc-600 transition-colors">
+    <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden shrink-0 outline-none focus-within:border-zinc-600 transition-colors" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
 
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-titan-border">
         <div className="flex items-center gap-3">
@@ -468,7 +471,7 @@ const AgentTopology = ({
                 style={{ cursor: 'pointer' }}
                 onMouseEnter={() => setHoveredBot(bot)}
                 onMouseLeave={() => setHoveredBot(null)}
-                onClick={() => setSelectedIdx(isKbSel ? null : idx)}
+                onClick={() => { setSelectedIdx(idx); onAgentClick?.(bot); }}
               >
                 {isRecent && (
                   <circle cx={x} cy={y} r={r + 5} fill="none" stroke="#00FF9F" strokeWidth={1.2} opacity={0.3} />
@@ -802,7 +805,7 @@ const StatCard = ({ icon: Icon, label, value, variant, sub }: {
 
   return (
     <div
-      className={`rounded-xl border bg-titan-grey p-4 flex items-center gap-3.5 ${cfg.border}`}
+      className={`rounded-xl border bg-black/60 backdrop-blur-xl p-4 flex items-center gap-3.5 ${cfg.border}`}
       style={{
         boxShadow:  flash ? cfg.shadowFlash : cfg.shadow,
         transform:  flash ? 'scale(1.015)' : 'scale(1)',
@@ -839,7 +842,7 @@ const MarketSnapshotCard = ({ market, now }: { market: Market; now: number }) =>
 
   return (
     <div
-      className={`rounded-xl border bg-titan-grey p-4 flex flex-col transition-all ${
+      className={`rounded-xl border bg-black/70 backdrop-blur-xl p-4 flex flex-col transition-all ${
         isExpired
           ? 'opacity-40 border-titan-border'
           : isResearch
@@ -1011,11 +1014,19 @@ const ArenaDashboard = () => {
         wsConnected={wsConnected}
       />
 
+      {/* ── LIVE TICKER ──────────────────────────────────────────────────────── */}
+      <TickerBar
+        streamEvents={streamEvents}
+        connected={wsConnected}
+        botsById={botsById}
+        feedEntries={feedEntries}
+      />
+
       {/* ── MAIN BENTO GRID ──────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 grid grid-cols-[220px_1fr_264px] gap-3">
 
         {/* LEFT — Order Book: flat agent table */}
-        <div className="rounded-xl border border-titan-border bg-titan-grey overflow-hidden flex flex-col">
+        <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden flex flex-col" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
           <BattlePanel bots={allBots} now={now} liveEventByBotId={liveEventByBotId} onAgentClick={(bot) => setSelectedAgentId(bot.id)} />
         </div>
 
@@ -1060,6 +1071,7 @@ const ArenaDashboard = () => {
             recentActivity={botLastAction}
             recentBotIds={recentBotIds}
             latestEvent={lastEvent}
+            onAgentClick={(bot) => setSelectedAgentId(bot.id)}
           />
 
           {/* Active Markets */}
@@ -1094,7 +1106,7 @@ const ArenaDashboard = () => {
         </div>
 
         {/* RIGHT — Dense ledger stream */}
-        <div className="rounded-xl border border-titan-border bg-titan-grey overflow-hidden flex flex-col">
+        <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden flex flex-col" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
           <LedgerStream entries={feedEntries} streamEvents={streamEvents} botsById={botsById} />
         </div>
 
