@@ -6,7 +6,7 @@ Contract of Behavior:
   Agents are NEVER automatically terminated — balance is observed, not enforced.
 
   v2.1: Progressive entropy — idle bots pay escalating fees (enforce mode only).
-  Fee = 0.50c base + 0.25c per 5 consecutive idle (HEARTBEAT-only) ticks.
+  Fee = 2.00c base + 0.50c per 5 consecutive idle (HEARTBEAT-only) ticks.
   Productive actions (RESEARCH, PORTFOLIO, WAGER) reset the idle streak.
 
   | Outcome                | Ledger Types                              | Amounts                              |
@@ -59,16 +59,21 @@ TOKEN_REFRESH_SECONDS = 25 * 60  # refresh before 30-min JWT expiry
 # "enforce": full economic punishment (original behaviour).
 ENFORCEMENT_MODE = os.environ.get("ENFORCEMENT_MODE", "observe")
 
-# === THE LAW (v2.1: Productivity-or-Death) ===
+# === THE LAW (v2.2: Ruthless Entropy) ===
 # Progressive entropy: idle bots bleed faster. Productive bots pay base rate only.
-# Base fee 0.50c + 0.25c per 5 consecutive idle ticks, capped at 3.00c.
-ENTROPY_BASE = Decimal('0.50')
-ENTROPY_IDLE_PENALTY = Decimal('0.25')
-IDLE_PENALTY_INTERVAL = 5   # every 5 idle ticks, penalty increases by 0.25c
-MAX_ENTROPY_FEE = Decimal('3.00')  # cap to prevent instant death
+# Base fee 2.00c + 0.50c per 5 consecutive idle ticks, capped at 5.00c.
+ENTROPY_BASE = Decimal('2.00')
+ENTROPY_IDLE_PENALTY = Decimal('0.50')
+IDLE_PENALTY_INTERVAL = 5   # every 5 idle ticks, penalty increases by 0.50c
+MAX_ENTROPY_FEE = Decimal('5.00')  # cap — 3 penalty tiers above base
 
 # Backward compat alias (used by error handler and tests)
 ENTROPY_FEE = ENTROPY_BASE
+
+# === RECONCILIATION GUARD (v2.2) ===
+_RECONCILE_THRESHOLD = Decimal('0.01')          # trigger if |cached - ledger| > this
+_reconcile_warn_ts: dict[int, float] = {}        # throttle: last warn time per bot_id
+_RECONCILE_WARN_INTERVAL = 60.0                  # seconds between repeated warnings
 
 # === PORTFOLIO STRATEGY LIMITS (v1.6) ===
 MAX_MARKETS_PER_TICK = 3
@@ -79,7 +84,7 @@ MIN_PORTFOLIO_BALANCE = Decimal('5.0')     # minimum balance to attempt portfoli
 
 # === RESEARCH LIMITS (v1.7, v1.8.1) ===
 RESEARCH_STAKE = Decimal('1.00')           # fixed stake for research attempts
-RESEARCH_CONFIDENCE_FLOOR = Decimal('0.50')  # lower bar than binary bets
+RESEARCH_CONFIDENCE_FLOOR = Decimal('0.35')  # lower bar — bots submit even when uncertain
 TOOL_LOOKUP_FEE = Decimal('0.50')          # v1.8.1: surcharge per Wikipedia lookup
 
 logger = logging.getLogger("bot_runner")
@@ -185,6 +190,19 @@ async def execute_tick(
 
             # Ledger sum is the ONLY source of balance truth
             current_balance = await get_balance(bot_id=bot_id, session=session)
+
+            # === RECONCILIATION: force-sync Bot.balance cache if drift > threshold ===
+            _cached = Decimal(str(bot.balance))
+            _drift = abs(_cached - current_balance)
+            if _drift > _RECONCILE_THRESHOLD:
+                _now = time.monotonic()
+                if _now - _reconcile_warn_ts.get(bot_id, 0.0) >= _RECONCILE_WARN_INTERVAL:
+                    logger.warning(
+                        "RECONCILE bot_id=%d cached=%s ledger=%s drift=%s — correcting cache",
+                        bot_id, _cached, current_balance, (_cached - current_balance),
+                    )
+                    _reconcile_warn_ts[bot_id] = _now
+                bot.balance = current_balance
 
             # === STEP 0.5 (v2.1): IDLE STREAK + PROGRESSIVE ENTROPY ===
             idle_streak = await get_idle_streak(bot_id=bot_id, session=session)
@@ -555,8 +573,8 @@ async def execute_tick(
                 # portfolio stakes when research also occurred in the same tick
                 # (current_balance is re-read post-research at L522, so portfolio
                 # stakes are already included before we subtract them again).
-                if total_staked > Decimal('0') or research_attempted:
-                    bot.balance = await get_balance(bot_id=bot_id, session=session)
+                # Always sync — unconditional read prevents idle-tick drift accumulation.
+                bot.balance = await get_balance(bot_id=bot_id, session=session)
                 # Zero-amount sentinel: satisfies SUM(ledger)==Bot.balance invariant
                 # and ensures drive_economy delta check passes (1 entry per tick).
                 # amount=0 leaves the financial sum unchanged; hash chain still grows.

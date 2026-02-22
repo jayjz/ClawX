@@ -67,7 +67,7 @@ class TestObserveModeNoBalanceChange:
             fee = br.calculate_entropy_fee(idle_streak=0)
         sys.modules.pop("bot_runner", None)
         assert isinstance(fee, Decimal)
-        assert fee == Decimal("0.50")
+        assert fee == Decimal("2.00")
 
     def test_progressive_fee_capped_at_max(self):
         """Progressive fee must not exceed MAX_ENTROPY_FEE regardless of streak."""
@@ -280,3 +280,77 @@ class TestObserveDecoratorContext:
         result = my_sync_agent(9)
         assert result == 10
         assert captured == [True], "Collector not active inside sync @observe"
+
+
+# ---------------------------------------------------------------------------
+# 4. Reconciliation guard: bot.balance must equal ledger sum after any tick
+# ---------------------------------------------------------------------------
+
+class TestBalanceLedgerReconciliation:
+    """Reconciliation guard: bot.balance must equal ledger sum after any observe tick."""
+
+    _STUB_MODULES = [
+        "database", "bot_loader", "llm_client", "thread_memory",
+        "services.ws_publisher", "services.market_service",
+        "services.ledger_service",
+    ]
+
+    def test_idle_observe_tick_balance_equals_ledger_sum(self):
+        """After a pure-idle observe-mode tick, bot.balance must equal the ledger sum.
+
+        Verifies that the reconciliation guard (Change 2) + always-sync (Change 3)
+        together drive bot.balance → LEDGER_SUM regardless of prior cache drift.
+        """
+        import asyncio, sys
+
+        LEDGER_SUM = Decimal('875.00')
+        STALE_BAL  = Decimal('900.00')   # intentional drift
+
+        stubs = {m: MagicMock() for m in self._STUB_MODULES if m not in sys.modules}
+        sys.modules.pop("bot_runner", None)
+
+        bot_obj = MagicMock()
+        bot_obj.status = "ALIVE"
+        bot_obj.balance = STALE_BAL
+
+        # session.execute: first call returns bot; all subsequent return empty
+        bot_result = MagicMock()
+        bot_result.scalar_one_or_none.return_value = bot_obj
+        empty = MagicMock()
+        empty.scalars.return_value.all.return_value = []
+        empty.scalar_one_or_none.return_value = None
+
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=empty)
+        # Override first call to return the bot
+        session.execute.side_effect = [bot_result] + [empty] * 20
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.dict(sys.modules, stubs):
+            import bot_runner as br
+            br.ENFORCEMENT_MODE = "observe"
+            br.async_session_maker = MagicMock(return_value=session)
+            # Patch all function references in br namespace
+            br.get_balance            = AsyncMock(return_value=LEDGER_SUM)
+            br.append_ledger_entry    = AsyncMock(return_value=MagicMock())
+            br.publish_tick_event     = AsyncMock()
+            br.get_active_markets_for_agent = AsyncMock(return_value=[])
+            br.generate_tick_strategy       = AsyncMock(return_value=None)
+            br.generate_portfolio_decision  = AsyncMock(return_value=None)
+            br.generate_prediction          = AsyncMock(return_value=None)
+            br.get_redis_client             = AsyncMock(return_value=None)
+
+            asyncio.run(br.execute_tick(
+                bot_id=1,
+                config={"persona": "t", "name": "t", "goals": [], "schedule": {}},
+                balance=float(STALE_BAL),
+            ))
+
+        sys.modules.pop("bot_runner", None)
+
+        # Core invariant: balance must equal ledger sum after any observe-mode tick
+        assert bot_obj.balance == LEDGER_SUM, (
+            f"Drift not reconciled: bot.balance={bot_obj.balance} != "
+            f"ledger_sum={LEDGER_SUM}"
+        )
