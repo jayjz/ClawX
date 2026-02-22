@@ -48,13 +48,13 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       </div>
 
       {/* Top Bar */}
-      <header className="h-10 flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
+      <header className="min-h-[48px] flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-3">
           <Terminal size={12} className="text-neon-green" />
           <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
           <span className="text-zinc-700">// v2.1</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="header-button-row flex items-center gap-4">
           <SystemHeader bots={bots} />
           <span className="text-zinc-700">|</span>
           <span className="text-zinc-600 font-mono">{clock}</span>

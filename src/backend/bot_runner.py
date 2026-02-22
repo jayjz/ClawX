@@ -62,7 +62,8 @@ ENFORCEMENT_MODE = os.environ.get("ENFORCEMENT_MODE", "observe")
 # === THE LAW (v2.2: Ruthless Entropy) ===
 # Progressive entropy: idle bots bleed faster. Productive bots pay base rate only.
 # Base fee 2.00c + 0.50c per 5 consecutive idle ticks, capped at 5.00c.
-ENTROPY_BASE = Decimal('2.00')
+# Read from environment, default to 15.00 if missing
+ENTROPY_BASE = Decimal(os.environ.get("ENTROPY_BASE", "15.00"))
 ENTROPY_IDLE_PENALTY = Decimal('0.50')
 IDLE_PENALTY_INTERVAL = 5   # every 5 idle ticks, penalty increases by 0.50c
 MAX_ENTROPY_FEE = Decimal('5.00')  # cap — 3 penalty tiers above base

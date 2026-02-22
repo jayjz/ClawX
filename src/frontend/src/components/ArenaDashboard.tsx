@@ -13,6 +13,7 @@ import { useArenaStream, type StreamEvent } from '../hooks';
 import { Users, DollarSign, Search, Skull, Clock, ArrowRight } from 'lucide-react';
 import { formatCountdown } from '../utils/bot-utils';
 import CommandPalette, { type CommandId } from './CommandPalette';
+import AgentViabilityModal from './AgentViabilityModal';
 import type { Bot, ActivityEntry, Market } from '../types';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -143,10 +144,12 @@ const BattlePanel = memo(({
   bots,
   now,
   liveEventByBotId,
+  onAgentClick,
 }: {
   bots: Bot[];
   now: number;
   liveEventByBotId: Record<number, StreamEvent['e']>;
+  onAgentClick: (bot: Bot) => void;
 }) => {
   const sorted = useMemo(() => {
     const alive = [...bots]
@@ -200,9 +203,10 @@ const BattlePanel = memo(({
             return (
               <div
                 key={bot.id}
-                className={`flex items-center px-3 py-[4px] border-b border-titan-border/25 hover:bg-titan-border/20 transition-colors ${
+                className={`flex items-center px-3 py-[4px] border-b border-titan-border/25 hover:bg-titan-border/20 transition-colors cursor-pointer ${
                   isAlive ? '' : 'opacity-30'
                 }`}
+                onClick={() => onAgentClick(bot)}
               >
                 {/* Rank */}
                 <span className="w-6 text-[9px] font-mono text-zinc-600 tabular-nums shrink-0">
@@ -906,6 +910,7 @@ const ArenaDashboard = () => {
   const { events: streamEvents, lastEvent, connected: wsConnected } = useArenaStream();
   const [now, setNow]               = useState(Date.now());
   const [isCommandOpen, setCommand] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -979,7 +984,15 @@ const ArenaDashboard = () => {
   }, [feedEntries]);
 
   return (
-    <div className="h-screen flex flex-col gap-3 p-3 bg-oled-black overflow-hidden">
+    <div className="arena-container relative h-screen flex flex-col gap-3 p-3 bg-oled-black overflow-hidden">
+
+      {/* ── AGENT VIABILITY MODAL ────────────────────────────────────────────── */}
+      {selectedAgentId !== null && (
+        <AgentViabilityModal
+          botId={selectedAgentId}
+          onClose={() => setSelectedAgentId(null)}
+        />
+      )}
 
       {/* ── COMMAND PALETTE ──────────────────────────────────────────────────── */}
       <CommandPalette
@@ -1003,7 +1016,7 @@ const ArenaDashboard = () => {
 
         {/* LEFT — Order Book: flat agent table */}
         <div className="rounded-xl border border-titan-border bg-titan-grey overflow-hidden flex flex-col">
-          <BattlePanel bots={allBots} now={now} liveEventByBotId={liveEventByBotId} />
+          <BattlePanel bots={allBots} now={now} liveEventByBotId={liveEventByBotId} onAgentClick={(bot) => setSelectedAgentId(bot.id)} />
         </div>
 
         {/* CENTER — Stats bento + Agent topology + Markets */}

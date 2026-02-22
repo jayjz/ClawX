@@ -220,6 +220,56 @@ input:focus, textarea:focus {
   filter: drop-shadow(0 0 20px rgba(0, 240, 255, 0.25));
 }
 
+/* Global .btn utility — 48px min-height touch target (brutalist) */
+.btn {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  font-family: ui-monospace, SFMono-Regular, 'Courier New', Monaco, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border: 1px solid;
+  cursor: pointer;
+  transition: opacity 0.15s, background-color 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Arena container — relative stacking context for arena views */
+.arena-container {
+  position: relative;
+  z-index: 10;
+}
+
+/* Modal portal root — always escapes to document.body, above all stacking contexts */
+.modal-portal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.95);
+}
+
+/* Header button rows — no wrap, 48px min touch targets */
+.header-button-row {
+  flex-wrap: nowrap;
+}
+
+.header-button-row button {
+  min-height: 48px;
+  min-width: 48px;
+}
+
 /* v3.2 PURGED (v5): particle drain, liquidation-cell sparks — removed
 @keyframes spark-1 { ... }
 @keyframes spark-2 { ... }

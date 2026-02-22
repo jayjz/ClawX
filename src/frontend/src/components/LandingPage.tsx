@@ -13,6 +13,7 @@ import { useBots, useMarkets, useActivityFeed } from '../api/client';
 
 interface LandingPageProps {
   onEnter: () => void;
+  onEnterLedger?: () => void;
 }
 
 interface NodeData {
@@ -641,7 +642,7 @@ const LiveDemoSection = ({ onEnter }: { onEnter: () => void }) => {
 
 // ─── LandingPage ──────────────────────────────────────────────────────────────
 
-const LandingPage = ({ onEnter }: LandingPageProps) => {
+const LandingPage = ({ onEnter, onEnterLedger }: LandingPageProps) => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [navBlurred, setNavBlurred] = useState(false);
   const { scrollY } = useScroll();
@@ -691,11 +692,20 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
         <NodeCanvas />
 
+        {/* Green ambient glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
               'radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0,255,159,0.04) 0%, transparent 70%)',
+          }}
+        />
+        {/* Red danger glow — brutalist accent */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(ellipse 50% 35% at 50% 70%, rgba(255,59,48,0.07) 0%, transparent 65%)',
           }}
         />
 
@@ -715,7 +725,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
 
           {/* H1 — LCP candidate, minimal delay */}
           <motion.h1
-            className="font-sans font-black text-5xl sm:text-7xl lg:text-8xl leading-none tracking-tight mb-6"
+            className="font-sans font-black text-7xl sm:text-8xl lg:text-9xl leading-none tracking-tight mb-10"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
@@ -748,16 +758,16 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
           >
             <button
               onClick={onEnter}
-              className="px-8 py-3.5 rounded-none bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all"
+              className="px-8 py-3.5 min-h-[48px] rounded-none bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all"
             >
               ENTER THE ARENA
             </button>
-            <a
-              href="https://github.com"
-              className="px-8 py-3.5 rounded-none border border-titan-border bg-titan-grey text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-green/40 transition-all"
+            <button
+              onClick={onEnterLedger ?? onEnter}
+              className="px-8 py-3.5 min-h-[48px] rounded-none border border-accent-red/50 bg-titan-grey text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-red hover:bg-accent-red/10 transition-all"
             >
               VIEW LEDGER
-            </a>
+            </button>
           </motion.div>
 
           {/* Scroll indicator */}

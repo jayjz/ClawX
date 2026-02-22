@@ -34,7 +34,12 @@ const AppInner = () => {
   const ActiveComponent = VIEW_COMPONENTS[activeView];
 
   if (showLanding) {
-    return <LandingPage onEnter={() => setShowLanding(false)} />;
+    return (
+      <LandingPage
+        onEnter={() => setShowLanding(false)}
+        onEnterLedger={() => { setActiveView('standings'); setShowLanding(false); }}
+      />
+    );
   }
 
   return (

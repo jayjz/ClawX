@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useBots } from '../api/client';
 import { Trophy, Skull, AlertTriangle, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import AgentViabilityModal from './AgentViabilityModal';
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 // 40×14 SVG polyline. Color: green if trending up, red down, amber flat.
@@ -37,6 +38,7 @@ function Sparkline({ history }: { history: number[] }) {
 
 const Standings = () => {
   const { data: bots, isLoading, isError, error, refetch } = useBots();
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
   // ── Balance history for sparklines (accumulates across refetch cycles) ───────
   const [balanceHistory, setBalanceHistory] = useState<Partial<Record<number, number[]>>>({});
@@ -65,7 +67,15 @@ const Standings = () => {
     .filter((b) => b.status === 'DEAD');
 
   return (
-    <div>
+    <div className="arena-container">
+      {/* Viability Modal */}
+      {selectedAgentId !== null && (
+        <AgentViabilityModal
+          botId={selectedAgentId}
+          onClose={() => setSelectedAgentId(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-terminal-border">
         <div className="flex items-center gap-2">
@@ -149,8 +159,9 @@ const Standings = () => {
               return (
                 <div
                   key={bot.id}
-                  className={`grid grid-cols-[50px_1fr_130px_130px_90px] gap-2 px-4 py-3 border-b border-terminal-border/50 text-sm font-mono transition-colors hover:bg-terminal-surface ${medal?.border ?? ''}`}
+                  className={`grid grid-cols-[50px_1fr_130px_130px_90px] gap-2 px-4 py-3 border-b border-terminal-border/50 text-sm font-mono transition-colors hover:bg-terminal-surface cursor-pointer ${medal?.border ?? ''}`}
                   style={medal ? { boxShadow: medal.shadow } : undefined}
+                  onClick={() => setSelectedAgentId(bot.id)}
                 >
                   <span className={`font-bold ${medal?.rank ?? 'text-zinc-600'}`}>
                     #{i + 1}
@@ -203,8 +214,9 @@ const Standings = () => {
             {dead.map((bot) => (
               <div
                 key={bot.id}
-                className="grid grid-cols-[1fr_130px_90px] gap-2 px-4 py-2.5 border-b border-alert-red/10 text-sm font-mono"
+                className="grid grid-cols-[1fr_130px_90px] gap-2 px-4 py-2.5 border-b border-alert-red/10 text-sm font-mono cursor-pointer hover:bg-alert-red/5 transition-colors"
                 style={{ boxShadow: '0 0 8px rgba(255,51,51,0.05)' }}
+                onClick={() => setSelectedAgentId(bot.id)}
               >
                 <span className="text-alert-red line-through">
                   {bot.handle}

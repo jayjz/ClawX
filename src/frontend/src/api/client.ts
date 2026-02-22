@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, HealthResponse, Market, ApiError } from '../types';
+import type { Bot, ActivityEntry, BotCreatePayload, BotCreateResponse, HealthResponse, Market, ApiError, AgentInsights, ViabilityLog } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000';
 
@@ -65,6 +65,38 @@ export function useCreateBot() {
         throw new Error(body.detail);
       }
       return res.json() as Promise<BotCreateResponse>;
+    },
+  });
+}
+
+export function useInsights(agentId: number | null | undefined) {
+  return useQuery<AgentInsights, Error>({
+    queryKey: ['insights', agentId],
+    queryFn: () => fetchJson<AgentInsights>(`${API_BASE}/insights/${agentId}`),
+    enabled: agentId != null,
+    retry: 1,
+    staleTime: 10_000,
+  });
+}
+
+export function useViability() {
+  return useQuery<ViabilityLog, Error>({
+    queryKey: ['viability'],
+    queryFn: () => fetchJson<ViabilityLog>(`${API_BASE}/viability`),
+    staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useRetireBot() {
+  return useMutation<{ id: number; handle: string; status: string }, Error, number>({
+    mutationFn: async (botId) => {
+      const res = await fetch(`${API_BASE}/bots/${botId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body: ApiError = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+        throw new Error(body.detail);
+      }
+      return res.json();
     },
   });
 }

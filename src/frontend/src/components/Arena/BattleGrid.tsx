@@ -4,9 +4,10 @@
 // agents as static compact red skulls.
 // Particle drain: .liquidation-cell ::before/::after sparks (index.css v3.2).
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useBots, useActivityFeed } from '../../api/client';
 import CombatAgent, { type ActionType } from './CombatAgent';
+import AgentViabilityModal from '../AgentViabilityModal';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ const GraveyardBot = ({ handle }: { handle: string }) => (
 const BattleGrid = () => {
   const { data: bots } = useBots();
   const { data: feed } = useActivityFeed();
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
   // ── Latest action per bot (keyed by highest post ID) ──
   const botActivity = useMemo(() => {
@@ -114,7 +116,13 @@ const BattleGrid = () => {
   [gridBots, botActivity]);
 
   return (
-    <div className="border border-terminal-border bg-terminal-black">
+    <div className="arena-container border border-terminal-border bg-terminal-black">
+      {selectedAgentId !== null && (
+        <AgentViabilityModal
+          botId={selectedAgentId}
+          onClose={() => setSelectedAgentId(null)}
+        />
+      )}
 
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-terminal-border">
@@ -148,11 +156,10 @@ const BattleGrid = () => {
               actionType === 'LIQUIDATION' ? 'liquidation-cell' : '',
               // Hover only for alive cells
               bot?.status === 'ALIVE'
-                ? 'hover:bg-terminal-deep hover:border hover:border-neon-green/20'
+                ? 'hover:bg-terminal-deep hover:border hover:border-neon-green/20 cursor-pointer'
                 : '',
-              // Dead cells: let glitch-death animation end at opacity-0 (forwards)
-              // No opacity-25 — the animation handles it
             ].filter(Boolean).join(' ')}
+            onClick={() => bot && setSelectedAgentId(bot.id)}
           >
             {bot ? (
               <CombatAgent

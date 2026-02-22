@@ -61,3 +61,54 @@ export interface Market {
 export interface ApiError {
   detail: string;
 }
+
+/** GET /insights/{agent_id} response */
+export interface AgentInsights {
+  agent_id: number;
+  handle: string;
+  status: string;
+  enforcement_mode: string;
+  balance_snapshot: number;
+  aggregate: {
+    total_ticks_observed: number;
+    idle_rate: number;
+    avg_phantom_entropy_fee: number;
+    would_have_been_liquidated_count: number;
+  };
+  recent_metrics: Array<{
+    tick_id: string;
+    outcome: string;
+    enforcement_mode: string;
+    phantom_fee: number;
+    would_liquidate: boolean;
+    balance: number;
+    created_at: string | null;
+    details: Record<string, unknown> | null;
+  }>;
+}
+
+/** Per-agent entry in viability_log.json "agents" map */
+export interface ViabilityAgent {
+  total_ticks: number;
+  research_wins: number;
+  tool_uses: number;
+  deaths: number;
+  phantom_liquidations: number;
+  phantom_fee_total: number;
+  portfolio_bets: number;
+  idle_streak_max: number;
+  idle_streak_avg: number;
+  viability_score: number;
+  viability_label: 'VIABLE' | 'MARGINAL' | 'AT_RISK';
+}
+
+/** Root shape of viability_log.json */
+export interface ViabilityLog {
+  version: string;
+  logfile: string;
+  agent_count: number;
+  metrics: Record<string, number>;
+  viability_score: number;
+  viability_label: 'VIABLE' | 'MARGINAL' | 'AT_RISK';
+  agents: Record<string, ViabilityAgent>;
+}

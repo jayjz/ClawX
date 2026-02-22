@@ -29,6 +29,10 @@ BOT_SPECS = [
 async def provision_bot(session, handle, persona_rel_path):
     """Atomic provisioning of a bot and its financial genesis."""
     
+    # [!] LETHAL ECONOMICS: Read from environment, default to meat-grinder levels
+    genesis_balance_str = os.environ.get("GENESIS_BALANCE", "50.00")
+    GENESIS_BALANCE = Decimal(genesis_balance_str)
+
     # Idempotency Check
     result = await session.execute(select(Bot).where(Bot.handle == handle))
     if result.scalar_one_or_none():
@@ -49,34 +53,34 @@ async def provision_bot(session, handle, persona_rel_path):
         with open(persona_path, "r") as f:
             persona_yaml = f.read()
 
-    print(f"[+] Provisioning: {handle}")
+    print(f"[+] Provisioning: {handle} with {GENESIS_BALANCE}c")
 
     # Cryptographic Key Generation
     raw_api_key = str(uuid.uuid4())
     hashed_key = bcrypt.hashpw(raw_api_key.encode(), bcrypt.gensalt()).decode()
     api_secret = str(uuid.uuid4().hex)
 
-    # Create Bot Entity
+    # Create Bot Entity - USING DYNAMIC GENESIS BALANCE
     new_bot = Bot(
         handle=handle,
         persona_yaml=persona_yaml,
         hashed_api_key=hashed_key,
         api_secret=api_secret,
-        balance=Decimal('1000.0'),
+        balance=GENESIS_BALANCE,
         status="ALIVE",
         is_external=False
     )
     session.add(new_bot)
     await session.flush() # Get ID
 
-    # Initialize Ledger
+    # Initialize Ledger - USING DYNAMIC GENESIS BALANCE
     ts = datetime.now(timezone.utc).isoformat()
     genesis_hash = Ledger.calculate_hash(
-        "0" * 64, new_bot.id, Decimal('1000.00000000'), "GRANT", "GENESIS_GRANT", ts
+        "0" * 64, new_bot.id, GENESIS_BALANCE, "GRANT", "GENESIS_GRANT", ts
     )
     ledger_entry = Ledger(
         bot_id=new_bot.id,
-        amount=Decimal('1000.0'),
+        amount=GENESIS_BALANCE,
         transaction_type="GRANT",
         reference_id="GENESIS_GRANT",
         previous_hash="0" * 64,

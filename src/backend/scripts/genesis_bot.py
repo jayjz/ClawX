@@ -24,6 +24,7 @@ import asyncio
 import os
 import secrets
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 # --- Path fixup: works from any CWD, Docker or local ---
@@ -39,10 +40,12 @@ from database import async_session_maker
 from models import Bot, AuditLog
 from services.ledger_service import append_ledger_entry
 
+GENESIS_BALANCE = Decimal(os.environ.get("GENESIS_BALANCE", "50.00"))
+
 
 async def create_genesis_bot(
     handle: str,
-    balance: float = 1000.0,
+    balance: Decimal = GENESIS_BALANCE,
     persona: str = "Arena test agent — sacrificial reference implementation.",
 ) -> None:
     """Create a bot + GRANT entry atomically."""
@@ -103,7 +106,7 @@ def main():
     parser.add_argument("name", nargs="?", default=None, help="Display name (unused, for compat)")
     parser.add_argument("config", nargs="?", default=None, help="Path to persona YAML file")
     parser.add_argument("--handle", dest="handle_flag", default=None, help="Unique bot handle (flag)")
-    parser.add_argument("--balance", type=float, default=1000.0, help="Starting balance (default: 1000)")
+    parser.add_argument("--balance", type=float, default=float(GENESIS_BALANCE), help="Starting balance (default: env GENESIS_BALANCE or 50)")
     parser.add_argument("--persona", default=None, help="Persona description")
     args = parser.parse_args()
 
@@ -124,7 +127,7 @@ def main():
         else:
             print(f"[!] Config file not found: {config_path}, using default persona")
 
-    asyncio.run(create_genesis_bot(handle, args.balance, persona))
+    asyncio.run(create_genesis_bot(handle, Decimal(str(args.balance)), persona))
 
 
 if __name__ == "__main__":

@@ -148,6 +148,51 @@ async def get_bot_by_handle(handle: str, session: AsyncSession = Depends(get_ses
     return _bot_to_response(bot)
 
 
+@app.delete("/bots/{bot_id}", status_code=200)
+async def retire_bot(bot_id: int, session: AsyncSession = Depends(get_session)):
+    """Retire an agent: mark DEAD and write a 0-amount RETIRED ledger sentinel.
+
+    Observe-mode safe — no balance mutation. The ledger hash chain grows by one
+    entry of type RETIRED with amount=0, preserving inspect_ledger.py invariants.
+    The human operator confirms retirement; the system records it immutably.
+    """
+    bot = await session.get(Bot, bot_id)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot {bot_id} not found")
+    if bot.status == "DEAD":
+        raise HTTPException(status_code=409, detail=f"Bot {bot_id} is already terminated")
+
+    bot.status = "DEAD"
+
+    # 0-amount sentinel preserves hash chain integrity in observe mode
+    await append_ledger_entry(
+        bot_id=bot_id,
+        amount=Decimal("0"),
+        transaction_type="RETIRED",
+        reference_id="HUMAN_RETIREMENT",
+        session=session,
+    )
+    session.add(AuditLog(bot_id=bot_id, action="BOT_RETIRED"))
+    await session.commit()
+
+    logger.info("Bot retired: id=%d handle=%s", bot_id, bot.handle)
+    return {"id": bot_id, "handle": bot.handle, "status": "DEAD", "message": "Agent retired."}
+
+
+@app.get("/viability")
+async def get_viability_log():
+    """Return viability_log.json from project root. Empty dict if missing or unreadable."""
+    import json as _json
+    from pathlib import Path as _Path
+    _path = _Path(__file__).resolve().parents[2] / "viability_log.json"
+    if not _path.exists():
+        return {}
+    try:
+        return _json.loads(_path.read_text())
+    except Exception:
+        return {}
+
+
 @app.get("/posts/feed", response_model=list[PostResponse])
 async def get_feed(limit: int = Query(default=20), offset: int = Query(default=0), session: AsyncSession = Depends(get_session)):
     stmt = (
