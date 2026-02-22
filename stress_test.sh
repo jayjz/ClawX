@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail  # ← strict mode: fail on unset vars & pipe errors
+set -euo pipefail
 
 # Configurable parameters (override via env vars)
 AGENT_COUNT=${AGENT_COUNT:-20}
@@ -8,7 +8,7 @@ BATTLE_DURATION_MIN=${BATTLE_DURATION_MIN:-18}
 HEALTH_WAIT_MAX_SEC=${HEALTH_WAIT_MAX_SEC:-60}
 
 LOGFILE="battle_log_$(date +%s).txt"
-echo "☢️ CLAWX BATTLE ROYALE v2.1.4 — Institutional Brutalism Edition"
+echo "☢️ CLAWX BATTLE ROYALE v2.1.5 — Institutional Brutalism Edition"
 echo "Start time: $(date)"
 echo "Log file: $LOGFILE"
 echo "Agents: $AGENT_COUNT | Duration: $BATTLE_DURATION_MIN min"
@@ -67,7 +67,7 @@ docker compose run --rm backend python src/backend/genesis_setup.py
 echo "🚀 LAUNCHING FULL STACK..."
 docker compose up -d --build --force-recreate frontend backend ticker market-maker
 
-# 7. WAIT FOR STACK HEALTH (backend + ticker + market-maker)
+# 7. WAIT FOR STACK HEALTH
 echo "⏳ Waiting for backend health..."
 until curl -s -f http://localhost:8000/health >/dev/null 2>&1; do
   sleep 2
@@ -94,11 +94,9 @@ echo "👀 BATTLE IS LIVE — OPEN UI NOW!"
 echo "   > UI: http://localhost:5173"
 echo "   > Logs: $LOGFILE (tail -f $LOGFILE to watch live)"
 
-# Start logging in background
 docker compose logs -f ticker market-maker backend > "$LOGFILE" 2>&1 &
 LOG_PID=$!
 
-# Live pulse reporting
 for ((k=1; k<=BATTLE_DURATION_MIN; k++)); do
   sleep 60
   ALIVE=$(grep -c "HEARTBEAT" "$LOGFILE" 2>/dev/null || echo 0)
@@ -113,7 +111,7 @@ kill $LOG_PID 2>/dev/null || true
 docker compose stop ticker market-maker
 
 echo ""
-echo "=== 💀 FINAL BATTLE REPORT v2.1.4 💀 ==="
+echo "=== 💀 FINAL BATTLE REPORT v2.1.5 💀 ==="
 echo "LLM: $LLM_PROVIDER | Tick: ${TICK_RATE}s"
 echo "TOTAL TICKS: $(grep -c 'Cycle.*complete' "$LOGFILE" 2>/dev/null || echo 0)"
 echo "RESEARCH SOLVED: $(grep -c 'RESEARCH SOLVED' "$LOGFILE" 2>/dev/null || echo 0)"
@@ -123,7 +121,8 @@ echo "🏆 SURVIVAL BY ARCHETYPE:"
 for t in "${TEMPLATES[@]}"; do
   TOTAL=$(grep -c "unit_[0-9][0-9]_${t}" "$LOGFILE" 2>/dev/null || echo 0)
   DEAD=$(grep "unit_[0-9][0-9]_${t}" "$LOGFILE" 2>/dev/null | grep -c "LIQUIDATION" || echo 0)
-  echo "   $t: $((TOTAL - DEAD)) alive out of $TOTAL"
+  ALIVE=$((TOTAL - DEAD))
+  echo "   $t: $ALIVE alive out of $TOTAL"
 done
 echo "----------------------------------------"
 echo "Open UI: http://localhost:5173"

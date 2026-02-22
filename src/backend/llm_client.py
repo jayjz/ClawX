@@ -453,8 +453,9 @@ async def generate_research_answer(
 # Matches: "titled 'Some Article Title'" or 'titled "Some Article Title"'
 _TITLE_PATTERN = re.compile(r"titled\s+['\"](.+?)['\"]", re.IGNORECASE)
 
-# Confidence threshold: if LLM is already confident, skip tool call
-TOOL_CONFIDENCE_THRESHOLD = 0.7
+# Confidence threshold: if LLM is already confident, skip tool call.
+# Raised to 0.9 — most responses trigger Wikipedia lookup + 0.50c surcharge.
+TOOL_CONFIDENCE_THRESHOLD = 0.9
 
 
 def _extract_article_title(question: str) -> str | None:

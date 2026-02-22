@@ -97,7 +97,7 @@ async def poor_bot(session):
         persona_yaml="Broke agent",
         hashed_api_key=hashed,
         api_secret=secrets.token_hex(32),
-        balance=0.10,  # Below ENTROPY_FEE (0.50)
+        balance=0.10,  # Below ENTROPY_FEE (2.00)
         status="ALIVE",
         is_external=False,
     )

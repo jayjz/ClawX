@@ -155,9 +155,9 @@ const NodeCanvas = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Mobile-aware node count
+    // Mobile-aware node count — fewer nodes = faster LCP unblock
     const isMobile = window.innerWidth < 768;
-    const nodeCount = isMobile ? 30 : 60;
+    const nodeCount = isMobile ? 24 : 60;
     const edgeMaxDist = isMobile ? 100 : 140;
 
     const resize = () => {
@@ -192,7 +192,6 @@ const NodeCanvas = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       driftTick++;
 
-      // Process mouse once per frame, then reset flag
       if (mouseDirtyRef.current) {
         mx = mouseRef.current.x;
         my = mouseRef.current.y;
@@ -202,7 +201,6 @@ const NodeCanvas = () => {
       const nodes = nodesRef.current;
 
       for (const node of nodes) {
-        // Periodic velocity nudge
         if (driftTick % 180 === 0) {
           node.vx += (Math.random() - 0.5) * 0.3;
           node.vy += (Math.random() - 0.5) * 0.3;
@@ -213,7 +211,6 @@ const NodeCanvas = () => {
           }
         }
 
-        // Mouse repulsion
         const dx = node.x - mx;
         const dy = node.y - my;
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -226,14 +223,12 @@ const NodeCanvas = () => {
         node.x += node.vx;
         node.y += node.vy;
 
-        // Wrap edges
         if (node.x < 0) node.x = canvas.width;
         if (node.x > canvas.width) node.x = 0;
         if (node.y < 0) node.y = canvas.height;
         if (node.y > canvas.height) node.y = 0;
       }
 
-      // Draw edges — O(n²) but n bounded: 30 mobile / 60 desktop
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const ni = nodes[i]!;
@@ -253,7 +248,6 @@ const NodeCanvas = () => {
         }
       }
 
-      // Draw nodes
       for (const node of nodes) {
         ctx.beginPath();
         ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
@@ -267,7 +261,6 @@ const NodeCanvas = () => {
       rafRef.current = requestAnimationFrame(draw);
     };
 
-    // Pause animation when canvas leaves viewport
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) {
@@ -335,7 +328,7 @@ const LiveStatsBand = () => {
   const doubled = [...items, ...items];
 
   return (
-    <div className="relative overflow-hidden border-y border-titan-border/60 bg-titan-grey/30 py-2">
+    <div className="relative overflow-hidden border-y border-titan-border bg-titan-grey py-2.5">
       <div
         className="flex whitespace-nowrap animate-ticker-scroll"
         style={{ willChange: 'transform' }}
@@ -351,7 +344,7 @@ const LiveStatsBand = () => {
   );
 };
 
-// ─── BentoCard — FLAT ─────────────────────────────────────────────────────────
+// ─── BentoCard — flat, sharp 1px border ───────────────────────────────────────
 
 interface BentoCardProps {
   icon: string;
@@ -367,7 +360,7 @@ const BentoCard = ({ icon, title, description, accent, index }: BentoCardProps) 
     whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true, margin: '-60px' }}
     transition={{ duration: 0.5, delay: index * 0.08, ease: 'easeOut' }}
-    className="rounded-none border border-titan-border bg-titan-grey p-6 flex flex-col gap-3"
+    className="rounded-none border border-titan-border bg-titan-grey p-7 flex flex-col gap-4"
   >
     <span
       className="font-mono text-xs font-bold uppercase tracking-widest"
@@ -379,7 +372,7 @@ const BentoCard = ({ icon, title, description, accent, index }: BentoCardProps) 
   </motion.div>
 );
 
-// ─── FAQItem ──────────────────────────────────────────────────────────────────
+// ─── FAQItem — flat, sharp 1px border ─────────────────────────────────────────
 
 interface FAQItemProps {
   q: string;
@@ -395,13 +388,13 @@ const FAQItem = ({ q, a, isOpen, onToggle, index }: FAQItemProps) => (
     whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true, margin: '-40px' }}
     transition={{ duration: 0.4, delay: index * 0.07, ease: 'easeOut' }}
-    className="border border-titan-border rounded-xl overflow-hidden"
+    className="border border-titan-border rounded-none overflow-hidden"
   >
     <button
       onClick={onToggle}
-      className="w-full flex items-center justify-between gap-4 p-5 text-left bg-titan-grey/50 hover:bg-titan-grey/80 transition-colors"
+      className="w-full flex items-center justify-between gap-4 p-5 text-left bg-titan-grey hover:bg-titan-border/40 transition-colors"
     >
-      <span className="font-sans font-semibold text-white text-sm">{q}</span>
+      <span className="font-sans font-semibold text-white text-sm leading-snug">{q}</span>
       <motion.span
         animate={{ rotate: isOpen ? 45 : 0 }}
         transition={{ duration: 0.2 }}
@@ -420,7 +413,7 @@ const FAQItem = ({ q, a, isOpen, onToggle, index }: FAQItemProps) => (
           transition={{ duration: 0.3, ease: 'easeInOut' }}
           className="overflow-hidden"
         >
-          <div className="px-5 pb-5 pt-1 bg-oled-black/40">
+          <div className="px-5 pb-6 pt-2 bg-oled-black border-t border-titan-border">
             <p className="font-sans text-sm text-zinc-400 leading-relaxed">{a}</p>
           </div>
         </motion.div>
@@ -429,7 +422,7 @@ const FAQItem = ({ q, a, isOpen, onToggle, index }: FAQItemProps) => (
   </motion.div>
 );
 
-// ─── SocialProofCard — FLAT ───────────────────────────────────────────────────
+// ─── SocialProofCard — flat, sharp 1px border ────────────────────────────────
 
 interface SocialProofCardProps {
   quote: string;
@@ -437,13 +430,13 @@ interface SocialProofCardProps {
 }
 
 const SocialProofCard = ({ quote, attribution }: SocialProofCardProps) => (
-  <div className="border border-titan-border bg-titan-grey p-5 rounded-none">
+  <div className="border border-titan-border bg-titan-grey p-6 rounded-none">
     <p className="font-sans text-sm text-zinc-300 leading-relaxed italic">"{quote}"</p>
-    <span className="font-mono text-xs text-zinc-500 mt-3 block">— {attribution}</span>
+    <span className="font-mono text-xs text-zinc-500 mt-4 block">— {attribution}</span>
   </div>
 );
 
-// ─── PricingCard — FLAT ───────────────────────────────────────────────────────
+// ─── PricingCard — flat ────────────────────────────────────────────────────────
 
 interface PricingCardProps {
   tier: string;
@@ -469,10 +462,10 @@ const PricingCard = ({
   disabled = false,
 }: PricingCardProps) => (
   <div
-    className={`rounded-none p-6 flex flex-col gap-5 ${
+    className={`rounded-none p-7 flex flex-col gap-5 ${
       featured
         ? 'border border-accent-green/50 bg-titan-grey'
-        : 'border border-titan-border bg-titan-grey/40 opacity-60'
+        : 'border border-titan-border bg-titan-grey opacity-60'
     }`}
   >
     <div>
@@ -485,7 +478,7 @@ const PricingCard = ({
       </p>
       <p className="font-sans text-xs text-zinc-500 mt-1">{description}</p>
     </div>
-    <div className="border-t border-titan-border pt-4 flex flex-col gap-2.5">
+    <div className="border-t border-titan-border pt-4 flex flex-col gap-3">
       {features.map((f, i) => (
         <div key={i} className="flex items-center gap-2">
           <span className="font-mono text-xs text-accent-green flex-shrink-0">✓</span>
@@ -531,7 +524,9 @@ const WaitlistForm = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    console.log('waitlist signup:', trimmed);
     setSubmitted(true);
   };
 
@@ -544,17 +539,18 @@ const WaitlistForm = () => {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 w-full max-w-md">
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 w-full max-w-md">
       <input
         type="email"
         value={email}
         onChange={e => setEmail(e.target.value)}
         placeholder="your@email.com"
-        className="flex-1 bg-titan-grey border border-titan-border rounded-none px-4 py-3 font-mono text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent-green/50 transition-colors"
+        required
+        className="flex-1 bg-titan-grey border border-titan-border rounded-none px-4 py-3 font-mono text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-accent-green/60 transition-colors"
       />
       <button
         type="submit"
-        className="px-6 py-3 bg-accent-green text-oled-black font-sans font-bold text-xs uppercase tracking-widest hover:bg-accent-green/90 transition-colors rounded-none"
+        className="px-6 py-3 bg-accent-green text-oled-black font-sans font-bold text-xs uppercase tracking-widest hover:bg-accent-green/90 transition-colors rounded-none whitespace-nowrap"
       >
         JOIN WAITLIST
       </button>
@@ -596,12 +592,12 @@ const LiveDemoSection = ({ onEnter }: { onEnter: () => void }) => {
         {stats.map((stat, i) => (
           <div
             key={i}
-            className="p-4 border-r border-titan-border last:border-r-0"
+            className="p-5 border-r border-titan-border last:border-r-0"
           >
-            <p className="font-mono text-2xl font-bold" style={{ color: stat.color }}>
+            <p className="font-mono text-2xl font-bold tabular-nums" style={{ color: stat.color }}>
               {stat.value}
             </p>
-            <p className="font-sans text-xs text-zinc-500 uppercase tracking-widest mt-1">
+            <p className="font-sans text-xs text-zinc-500 uppercase tracking-widest mt-1.5">
               {stat.label}
             </p>
           </div>
@@ -611,12 +607,12 @@ const LiveDemoSection = ({ onEnter }: { onEnter: () => void }) => {
       {/* Recent events feed */}
       <div className="divide-y divide-titan-border/50">
         {recentFeed.length === 0 && (
-          <div className="px-4 py-6 text-center font-mono text-xs text-zinc-600 uppercase tracking-widest">
+          <div className="px-4 py-8 text-center font-mono text-xs text-zinc-600 uppercase tracking-widest">
             SCANNING...
           </div>
         )}
         {recentFeed.map(entry => (
-          <div key={entry.id} className="px-4 py-3 flex items-center gap-3">
+          <div key={entry.id} className="px-5 py-3.5 flex items-center gap-3">
             <span className="font-mono text-xs text-accent-green flex-shrink-0">
               {entry.author_handle}
             </span>
@@ -631,7 +627,7 @@ const LiveDemoSection = ({ onEnter }: { onEnter: () => void }) => {
       </div>
 
       {/* CTA */}
-      <div className="px-4 py-4 border-t border-titan-border flex justify-center">
+      <div className="px-5 py-4 border-t border-titan-border flex justify-center">
         <button
           onClick={onEnter}
           className="px-6 py-2 border border-accent-green/40 text-accent-green font-mono text-xs uppercase tracking-widest hover:bg-accent-green/10 transition-colors"
@@ -667,13 +663,13 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       <motion.nav
         className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 transition-all duration-300"
         style={{
-          backgroundColor: navBlurred ? 'rgba(10,10,10,0.85)' : 'transparent',
+          backgroundColor: navBlurred ? 'rgba(10,10,10,0.92)' : 'transparent',
           backdropFilter: navBlurred ? 'blur(12px)' : 'none',
-          borderBottom: navBlurred ? '1px solid rgba(42,42,42,0.6)' : '1px solid transparent',
+          borderBottom: navBlurred ? '1px solid rgba(42,42,42,0.8)' : '1px solid transparent',
         }}
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
       >
         <div className="flex items-center gap-2">
           <span className="font-mono text-accent-green font-bold text-sm tracking-widest">
@@ -685,7 +681,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
         </div>
         <button
           onClick={onEnter}
-          className="px-4 py-2 rounded-lg bg-accent-green text-oled-black font-sans font-semibold text-xs uppercase tracking-widest hover:bg-accent-green/90 transition-colors"
+          className="px-4 py-2 rounded-none bg-accent-green text-oled-black font-sans font-semibold text-xs uppercase tracking-widest hover:bg-accent-green/90 transition-colors"
         >
           ENTER ARENA →
         </button>
@@ -695,7 +691,6 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
         <NodeCanvas />
 
-        {/* Static gradient — always visible, serves as fallback on prefers-reduced-motion */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -705,11 +700,12 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
         />
 
         <div className="relative z-10 flex flex-col items-center text-center px-6 max-w-5xl mx-auto">
+          {/* Live badge */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-accent-green/30 bg-accent-green/5 mb-8"
+            transition={{ duration: 0.5, delay: 0.05 }}
+            className="inline-flex items-center gap-2 px-3 py-1 border border-accent-green/30 bg-accent-green/5 mb-10"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
             <span className="font-mono text-xs text-accent-green tracking-widest uppercase">
@@ -717,11 +713,12 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </span>
           </motion.div>
 
+          {/* H1 — LCP candidate, minimal delay */}
           <motion.h1
             className="font-sans font-black text-5xl sm:text-7xl lg:text-8xl leading-none tracking-tight mb-6"
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
+            transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
           >
             <span className="text-white">THE ONLY BENCHMARK</span>
             <br />
@@ -730,44 +727,47 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </span>
           </motion.h1>
 
+          {/* Subtext */}
           <motion.p
-            className="font-sans text-base sm:text-lg text-zinc-400 max-w-2xl leading-relaxed mb-10"
-            initial={{ opacity: 0, y: 20 }}
+            className="font-sans text-lg sm:text-xl text-zinc-400 max-w-2xl leading-relaxed mb-10"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.35, ease: 'easeOut' }}
+            transition={{ duration: 0.5, delay: 0.2, ease: 'easeOut' }}
           >
             Autonomous AI agents wage real capital in a live economy.
             Entropy kills the idle. Insolvency kills the reckless.
             Only the adaptive survive.
           </motion.p>
 
+          {/* CTAs */}
           <motion.div
-            className="flex flex-col sm:flex-row gap-3 mb-16"
-            initial={{ opacity: 0, y: 16 }}
+            className="flex flex-col sm:flex-row gap-3 mb-20"
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5, ease: 'easeOut' }}
+            transition={{ duration: 0.5, delay: 0.3, ease: 'easeOut' }}
           >
             <button
               onClick={onEnter}
-              className="px-8 py-3.5 rounded-xl bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all shadow-lg shadow-accent-green/25"
+              className="px-8 py-3.5 rounded-none bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all"
             >
               ENTER THE ARENA
             </button>
             <a
               href="https://github.com"
-              className="px-8 py-3.5 rounded-xl border border-titan-border bg-titan-grey/50 text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-green/40 hover:bg-titan-grey/80 transition-all"
+              className="px-8 py-3.5 rounded-none border border-titan-border bg-titan-grey text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-green/40 transition-all"
             >
               VIEW LEDGER
             </a>
           </motion.div>
 
+          {/* Scroll indicator */}
           <motion.div
-            className="flex flex-col items-center gap-2 animate-float"
+            className="flex flex-col items-center gap-2"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 1.0 }}
+            transition={{ delay: 0.8 }}
           >
-            <span className="font-mono text-xs text-zinc-600 uppercase tracking-widest">scroll</span>
+            <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-widest">scroll</span>
             <div className="w-px h-8 bg-gradient-to-b from-zinc-600 to-transparent" />
           </motion.div>
         </div>
@@ -777,7 +777,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       <LiveStatsBand />
 
       {/* ── 3. Problem Agitation ─────────────────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section className="py-28 px-6">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -786,7 +786,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <p className="font-mono text-xs text-accent-cyan uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-cyan uppercase tracking-widest mb-5">
               THE PROBLEM
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white leading-tight">
@@ -796,7 +796,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </h2>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-titan-border">
             {[
               {
                 label: 'MEMORIZATION',
@@ -823,7 +823,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="rounded-xl border border-titan-border bg-titan-grey/60 p-6 flex flex-col gap-3"
+                className="bg-titan-grey p-7 flex flex-col gap-4"
               >
                 <span
                   className="font-mono text-xs font-bold uppercase tracking-widest"
@@ -842,7 +842,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 4. Live Demo ─────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6 bg-titan-grey/10">
+      <section className="py-28 px-6 border-y border-titan-border/40">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -851,13 +851,13 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             transition={{ duration: 0.5 }}
             className="text-center mb-12"
           >
-            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-5">
               LIVE DEMO
             </p>
-            <h2 className="font-sans font-black text-3xl sm:text-4xl text-white mb-3">
+            <h2 className="font-sans font-black text-3xl sm:text-4xl text-white mb-4">
               The arena, right now.
             </h2>
-            <p className="font-sans text-sm text-zinc-400 max-w-lg mx-auto">
+            <p className="font-sans text-base text-zinc-400 max-w-lg mx-auto leading-relaxed">
               Live data from the running API. Every number is a sum of real ledger entries.
             </p>
           </motion.div>
@@ -874,7 +874,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 5. How It Works — Bento (flat) ───────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section className="py-28 px-6">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -883,7 +883,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-5">
               THE LOOP
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white">
@@ -891,7 +891,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </h2>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-titan-border">
             {BENTO_CELLS.map((cell, i) => (
               <BentoCard key={i} {...cell} index={i} />
             ))}
@@ -900,7 +900,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 6. Differentiation ───────────────────────────────────────────────── */}
-      <section className="py-24 px-6 bg-titan-grey/10">
+      <section className="py-28 px-6 border-y border-titan-border/40">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -909,7 +909,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             transition={{ duration: 0.5 }}
             className="text-center mb-16"
           >
-            <p className="font-mono text-xs text-accent-amber uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-amber uppercase tracking-widest mb-5">
               DIFFERENTIATION
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white">
@@ -917,7 +917,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </h2>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-px bg-titan-border">
             {[
               {
                 category: 'Paper Trading',
@@ -963,14 +963,14 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                className={`rounded-xl border p-6 flex flex-col gap-4 ${
+                className={`p-7 flex flex-col gap-5 ${
                   col.highlight
-                    ? 'border-accent-green/40 bg-accent-green/5'
-                    : 'border-titan-border bg-titan-grey/40'
+                    ? 'bg-accent-green/5 border-x-0'
+                    : 'bg-titan-grey'
                 }`}
               >
                 <div>
-                  <h3 className="font-sans font-bold text-white text-sm mb-1">{col.category}</h3>
+                  <h3 className="font-sans font-bold text-white text-sm mb-1.5">{col.category}</h3>
                   <span
                     className="font-mono text-xs uppercase tracking-widest"
                     style={{ color: col.verdictColor }}
@@ -978,7 +978,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
                     {col.verdict}
                   </span>
                 </div>
-                <div className="flex flex-col gap-2.5">
+                <div className="flex flex-col gap-3">
                   {col.rows.map((row, j) => (
                     <div key={j} className="flex items-center gap-2.5">
                       <span
@@ -1002,16 +1002,16 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 7. Social Proof ──────────────────────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section className="py-28 px-6">
         <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.5 }}
-            className="text-center mb-12"
+            className="text-center mb-14"
           >
-            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-5">
               PROOF OF WORK
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white">
@@ -1021,7 +1021,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
 
           {/* Stat pills */}
           <motion.div
-            className="flex flex-wrap justify-center gap-4 mb-10"
+            className="flex flex-wrap justify-center gap-0 mb-12 border border-titan-border"
             initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-60px' }}
@@ -1032,19 +1032,15 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
               { value: '8', label: 'DECIMAL PRECISION' },
               { value: '<500ms', label: 'SETTLEMENT TIME' },
             ].map((stat, i) => (
-              <motion.div
+              <div
                 key={i}
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.1 }}
-                className="border border-titan-border bg-titan-grey px-4 py-3 rounded-none text-center"
+                className="flex-1 min-w-[120px] bg-titan-grey px-6 py-5 text-center border-r border-titan-border last:border-r-0"
               >
-                <p className="font-mono text-xl text-accent-green font-bold">{stat.value}</p>
-                <p className="font-sans text-xs text-zinc-500 uppercase tracking-widest mt-1">
+                <p className="font-mono text-2xl text-accent-green font-bold tabular-nums">{stat.value}</p>
+                <p className="font-sans text-xs text-zinc-500 uppercase tracking-widest mt-1.5">
                   {stat.label}
                 </p>
-              </motion.div>
+              </div>
             ))}
           </motion.div>
 
@@ -1066,16 +1062,16 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 8. Pricing ───────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6 bg-titan-grey/10">
+      <section className="py-28 px-6 border-y border-titan-border/40">
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.5 }}
-            className="text-center mb-12"
+            className="text-center mb-14"
           >
-            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-5">
               PRICING
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white">
@@ -1083,7 +1079,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </h2>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-titan-border">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -1120,16 +1116,16 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
       </section>
 
       {/* ── 9. FAQ ───────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section className="py-28 px-6">
         <div className="max-w-3xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.5 }}
-            className="text-center mb-12"
+            className="text-center mb-14"
           >
-            <p className="font-mono text-xs text-accent-cyan uppercase tracking-widest mb-4">
+            <p className="font-mono text-xs text-accent-cyan uppercase tracking-widest mb-5">
               FAQ
             </p>
             <h2 className="font-sans font-black text-3xl sm:text-4xl text-white">
@@ -1137,7 +1133,7 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
             </h2>
           </motion.div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-px bg-titan-border">
             {FAQ_ITEMS.map((item, i) => (
               <FAQItem
                 key={i}
@@ -1152,53 +1148,57 @@ const LandingPage = ({ onEnter }: LandingPageProps) => {
         </div>
       </section>
 
-      {/* ── 10. Final CTA ────────────────────────────────────────────────────── */}
-      <section className="py-32 px-6 relative overflow-hidden">
+      {/* ── 10. Final CTA + Waitlist ─────────────────────────────────────────── */}
+      <section className="py-36 px-6 relative overflow-hidden border-t border-titan-border/40">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
             background:
-              'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(0,255,159,0.06) 0%, transparent 70%)',
+              'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(0,255,159,0.05) 0%, transparent 70%)',
           }}
         />
 
-        <div className="relative max-w-4xl mx-auto text-center">
+        <div className="relative max-w-2xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-80px' }}
             transition={{ duration: 0.6, ease: 'easeOut' }}
           >
-            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-6">
+            <p className="font-mono text-xs text-accent-green uppercase tracking-widest mb-8">
               THE ARENA IS LIVE
             </p>
-            <h2 className="font-sans font-black text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-4">
+            <h2 className="font-sans font-black text-4xl sm:text-5xl lg:text-6xl text-white leading-tight mb-5">
               HOW LONG WILL YOUR
               <br />
               <span className="landing-glow" style={{ color: '#00FF9F' }}>
                 AGENT LAST?
               </span>
             </h2>
-            <p className="font-sans text-base text-zinc-400 max-w-xl mx-auto mb-10 leading-relaxed">
+            <p className="font-sans text-lg text-zinc-400 max-w-xl mx-auto mb-12 leading-relaxed">
               Deploy an agent. Watch it reason. Watch it bet. Watch it survive — or die trying.
               The ledger forgets nothing.
             </p>
 
-            {/* Waitlist form */}
-            <div className="flex justify-center mb-8">
+            {/* Waitlist form — mock submit to console.log */}
+            <div className="flex justify-center mb-10">
               <WaitlistForm />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <p className="font-mono text-xs text-zinc-600 uppercase tracking-widest mb-8">
+              or
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button
                 onClick={onEnter}
-                className="px-10 py-4 rounded-xl bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all shadow-xl shadow-accent-green/25"
+                className="px-10 py-4 rounded-none bg-accent-green text-oled-black font-sans font-bold text-sm uppercase tracking-widest hover:bg-accent-green/90 transition-all"
               >
                 ENTER THE ARENA
               </button>
               <button
                 onClick={onEnter}
-                className="px-10 py-4 rounded-xl border border-titan-border bg-titan-grey/50 text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-green/40 hover:bg-titan-grey/80 transition-all"
+                className="px-10 py-4 rounded-none border border-titan-border bg-titan-grey text-white font-sans font-semibold text-sm uppercase tracking-widest hover:border-accent-green/40 transition-all"
               >
                 DEPLOY AN AGENT
               </button>

@@ -1,4 +1,4 @@
-"""Tests for v2.1 Progressive Entropy — Productivity-or-Death.
+"""Tests for v2.2 Progressive Entropy — Ruthless Arena.
 
 Validates:
   - Idle streak counting from ledger entries
@@ -28,7 +28,7 @@ class TestCalculateEntropyFee:
     def test_zero_idle_returns_base(self):
         from bot_runner import calculate_entropy_fee, ENTROPY_BASE
         assert calculate_entropy_fee(0) == ENTROPY_BASE
-        assert calculate_entropy_fee(0) == Decimal('0.50')
+        assert calculate_entropy_fee(0) == Decimal('2.00')
 
     def test_under_interval_returns_base(self):
         from bot_runner import calculate_entropy_fee, ENTROPY_BASE
@@ -37,24 +37,27 @@ class TestCalculateEntropyFee:
 
     def test_one_penalty_tier(self):
         from bot_runner import calculate_entropy_fee
-        assert calculate_entropy_fee(5) == Decimal('0.75')
-        assert calculate_entropy_fee(6) == Decimal('0.75')
-        assert calculate_entropy_fee(9) == Decimal('0.75')
+        # base 2.00 + 1 tier * 0.50 = 2.50
+        assert calculate_entropy_fee(5) == Decimal('2.50')
+        assert calculate_entropy_fee(6) == Decimal('2.50')
+        assert calculate_entropy_fee(9) == Decimal('2.50')
 
     def test_two_penalty_tiers(self):
         from bot_runner import calculate_entropy_fee
-        assert calculate_entropy_fee(10) == Decimal('1.00')
-        assert calculate_entropy_fee(14) == Decimal('1.00')
+        # base 2.00 + 2 tiers * 0.50 = 3.00
+        assert calculate_entropy_fee(10) == Decimal('3.00')
+        assert calculate_entropy_fee(14) == Decimal('3.00')
 
     def test_three_penalty_tiers(self):
         from bot_runner import calculate_entropy_fee
-        assert calculate_entropy_fee(15) == Decimal('1.25')
+        # base 2.00 + 3 tiers * 0.50 = 3.50
+        assert calculate_entropy_fee(15) == Decimal('3.50')
 
     def test_fee_capped_at_max(self):
         from bot_runner import calculate_entropy_fee, MAX_ENTROPY_FEE
-        # 100 idle ticks = 20 tiers * 0.25 = 5.00 + 0.50 = 5.50 -> capped at 3.00
+        # 100 idle ticks = 20 tiers * 0.50 = 10.00 + 2.00 = 12.00 -> capped at 5.00
         assert calculate_entropy_fee(100) == MAX_ENTROPY_FEE
-        assert calculate_entropy_fee(100) == Decimal('3.00')
+        assert calculate_entropy_fee(100) == Decimal('5.00')
 
     def test_large_idle_still_capped(self):
         from bot_runner import calculate_entropy_fee, MAX_ENTROPY_FEE
@@ -189,11 +192,11 @@ class TestProgressiveConstants:
 
     def test_entropy_base(self):
         from bot_runner import ENTROPY_BASE
-        assert ENTROPY_BASE == Decimal('0.50')
+        assert ENTROPY_BASE == Decimal('2.00')
 
     def test_entropy_idle_penalty(self):
         from bot_runner import ENTROPY_IDLE_PENALTY
-        assert ENTROPY_IDLE_PENALTY == Decimal('0.25')
+        assert ENTROPY_IDLE_PENALTY == Decimal('0.50')
 
     def test_idle_penalty_interval(self):
         from bot_runner import IDLE_PENALTY_INTERVAL
@@ -201,7 +204,7 @@ class TestProgressiveConstants:
 
     def test_max_entropy_fee(self):
         from bot_runner import MAX_ENTROPY_FEE
-        assert MAX_ENTROPY_FEE == Decimal('3.00')
+        assert MAX_ENTROPY_FEE == Decimal('5.00')
 
     def test_backward_compat_alias(self):
         from bot_runner import ENTROPY_FEE, ENTROPY_BASE

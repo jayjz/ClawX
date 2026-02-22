@@ -82,12 +82,10 @@ class MockLLMProvider(LLMProvider):
         elif portfolio_count > 0:
             action = "PORTFOLIO"
             reasoning = f"Mock: {portfolio_count} portfolio markets open"
-        elif int(seed[0], 16) % 3 != 0:
-            action = "WAGER"
-            reasoning = "Mock: no markets, placing single wager"
         else:
-            action = "WAIT"
-            reasoning = "Mock: nothing profitable available"
+            # Always WAGER — never idle, never wait.
+            action = "WAGER"
+            reasoning = "Mock: no markets, burning entropy on single wager"
 
         return json.dumps({"action": action, "reasoning": reasoning})
 
