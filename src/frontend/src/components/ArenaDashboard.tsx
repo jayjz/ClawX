@@ -90,7 +90,7 @@ const TopBar = ({ aliveCount, deadCount, marketCount, onCommandOpen, wsConnected
     </div>
 
     <div className="flex items-center gap-5">
-      <div className="flex items-center gap-4 text-[9px] font-sans uppercase tracking-widest">
+      <div className="flex items-center gap-4 text-[10px] font-sans uppercase tracking-widest">
         <span className="flex items-center gap-1.5 text-accent-green">
           <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
           {aliveCount} ALIVE
@@ -170,22 +170,22 @@ const BattlePanel = memo(({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-titan-border shrink-0">
         <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
-        <span className="text-[9px] font-mono font-bold text-accent-green uppercase tracking-widest">
+        <span className="text-[10px] font-mono font-bold text-accent-green uppercase tracking-widest">
           ORDER BOOK
         </span>
-        <span className="ml-auto text-[9px] font-mono text-zinc-600 tabular-nums">
+        <span className="ml-auto text-[10px] font-mono text-zinc-600 tabular-nums">
           {aliveCount} ALIVE
         </span>
       </div>
 
       {/* Column headers */}
       <div className="flex items-center px-3 py-1 border-b border-titan-border/50 shrink-0">
-        <span className="w-6 text-[8px] font-mono text-zinc-700 shrink-0">#</span>
-        <span className="flex-1 text-[8px] font-mono text-zinc-700 uppercase tracking-widest min-w-0">HANDLE</span>
-        <span className="w-[66px] text-[8px] font-mono text-zinc-700 text-right uppercase tracking-widest">BAL</span>
-        <span className="w-[48px] text-[8px] font-mono text-zinc-700 text-right uppercase tracking-widest">TICKS</span>
-        <span className="w-[46px] text-[8px] font-mono text-zinc-700 text-right uppercase tracking-widest">ST</span>
-        <span className="w-[28px] text-[8px] font-mono text-zinc-700 text-right uppercase tracking-widest">EVT</span>
+        <span className="w-6 text-[9px] font-mono text-zinc-700 shrink-0">#</span>
+        <span className="flex-1 text-[9px] font-mono text-zinc-700 uppercase tracking-widest min-w-0">HANDLE</span>
+        <span className="w-[66px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">BAL</span>
+        <span className="w-[48px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">TICKS</span>
+        <span className="w-[46px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">ST</span>
+        <span className="w-[28px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">EVT</span>
       </div>
 
       {/* Rows */}
@@ -210,27 +210,27 @@ const BattlePanel = memo(({
                 onClick={() => onAgentClick(bot)}
               >
                 {/* Rank */}
-                <span className="w-6 text-[9px] font-mono text-zinc-600 tabular-nums shrink-0">
+                <span className="w-6 text-[10px] font-mono text-zinc-600 tabular-nums shrink-0">
                   {i + 1}
                 </span>
 
                 {/* Handle */}
-                <span className={`flex-1 text-[9px] font-mono font-bold truncate min-w-0 ${accentCls}`}>
+                <span className={`flex-1 text-[10px] font-mono font-bold truncate min-w-0 ${accentCls}`}>
                   {bot.handle}
                 </span>
 
                 {/* Balance */}
-                <span className={`w-[66px] text-[9px] font-mono tabular-nums text-right ${accentCls}`}>
+                <span className={`w-[66px] text-[10px] font-mono tabular-nums text-right ${accentCls}`}>
                   {balance.toFixed(2)}c
                 </span>
 
                 {/* Survival ticks */}
-                <span className="w-[48px] text-[9px] font-mono text-zinc-500 tabular-nums text-right">
+                <span className="w-[48px] text-[10px] font-mono text-zinc-500 tabular-nums text-right">
                   {ticks > 0 ? ticks.toLocaleString() : '—'}
                 </span>
 
                 {/* Status */}
-                <span className={`w-[46px] text-[9px] font-mono font-bold text-right ${accentCls}`}>
+                <span className={`w-[46px] text-[10px] font-mono font-bold text-right ${accentCls}`}>
                   {isAlive ? '● LIV' : '● DED'}
                 </span>
 
@@ -238,7 +238,7 @@ const BattlePanel = memo(({
                 {(() => {
                   const evtCode = liveEventByBotId[bot.id];
                   return (
-                    <span className={`w-[28px] text-[9px] font-mono font-bold text-right shrink-0 ${EVT_COLOR[evtCode ?? ''] ?? 'text-zinc-800'}`}>
+                    <span className={`w-[28px] text-[10px] font-mono font-bold text-right shrink-0 ${EVT_COLOR[evtCode ?? ''] ?? 'text-zinc-800'}`}>
                       {evtCode ?? '·'}
                     </span>
                   );
@@ -501,12 +501,12 @@ const AgentTopology = ({
                   </>
                 )}
                 <text x={x} y={y + r + 13} textAnchor="middle" fill={isKbSel ? (isAlive ? '#00FF9F' : '#FF3B30') : color}
-                  fontSize={8} fontFamily='"JetBrains Mono","Courier New",monospace'
+                  fontSize={9} fontFamily='"JetBrains Mono","Courier New",monospace'
                   opacity={isAlive ? (isKbSel ? 1 : 0.85) : 0.32} letterSpacing="0.4">
                   {label}
                 </text>
                 <text x={x} y={y + r + 23} textAnchor="middle" fill={color}
-                  fontSize={7} fontFamily='"JetBrains Mono","Courier New",monospace'
+                  fontSize={8} fontFamily='"JetBrains Mono","Courier New",monospace'
                   opacity={isAlive ? 0.38 : 0.14}>
                   {isAlive ? `${balance.toFixed(0)}c` : 'DEAD'}
                 </text>
@@ -646,10 +646,10 @@ const LedgerStream = memo(({ entries, streamEvents, botsById }: {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 px-2 py-1.5 border-b border-titan-border shrink-0">
-        <span className="text-[9px] font-mono font-bold text-accent-cyan uppercase tracking-widest">
+        <span className="text-[10px] font-mono font-bold text-accent-cyan uppercase tracking-widest">
           LEDGER
         </span>
-        <span className="ml-auto text-[9px] font-mono text-zinc-600 tabular-nums">
+        <span className="ml-auto text-[10px] font-mono text-zinc-600 tabular-nums">
           {visible.length}/{entries.length}
         </span>
       </div>
@@ -661,7 +661,7 @@ const LedgerStream = memo(({ entries, streamEvents, botsById }: {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="FILTER HANDLE / CONTENT..."
-          className="w-full bg-transparent px-2 py-1 text-[9px] font-mono text-zinc-400 placeholder:text-zinc-700 outline-none border-0"
+          className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-400 placeholder:text-zinc-700 outline-none border-0"
           style={{ fontFamily: '"JetBrains Mono","Courier New",monospace' }}
           spellCheck={false}
         />
@@ -670,7 +670,7 @@ const LedgerStream = memo(({ entries, streamEvents, botsById }: {
       {/* ── Column headers ──────────────────────────────────────────────────── */}
       <div
         className="flex items-center gap-0 px-2 py-[2px] border-b border-titan-border/60 shrink-0"
-        style={{ fontFamily: '"JetBrains Mono","Courier New",monospace', fontSize: '8px' }}
+        style={{ fontFamily: '"JetBrains Mono","Courier New",monospace', fontSize: '9px' }}
       >
         <span className="w-[54px] text-zinc-700 shrink-0">TIME</span>
         <span className="w-[58px] text-zinc-700 shrink-0">HANDLE</span>
@@ -693,10 +693,10 @@ const LedgerStream = memo(({ entries, streamEvents, botsById }: {
                 key={`ws-${ev.t}-${ev.b}-${i}`}
                 className="flex items-center gap-0 px-2 border-b border-[#181818] bg-[#0e1a14]/60"
                 style={{
-                  height:     '18px',
+                  height:     '20px',
                   fontFamily: '"JetBrains Mono","Courier New",monospace',
-                  fontSize:   '9px',
-                  lineHeight: '18px',
+                  fontSize:   '10px',
+                  lineHeight: '20px',
                   opacity:    i === 0 ? 1 : Math.max(0.35, 1 - i * 0.1),
                 }}
               >
@@ -742,10 +742,10 @@ const LedgerStream = memo(({ entries, streamEvents, botsById }: {
                   opacity:    intensity,
                   background: isNew ? 'rgba(0,240,255,0.035)' : undefined,
                   transition: 'background 900ms ease',
-                  height:     '18px',
+                  height:     '20px',
                   fontFamily: '"JetBrains Mono","Courier New",monospace',
-                  fontSize:   '9px',
-                  lineHeight: '18px',
+                  fontSize:   '10px',
+                  lineHeight: '20px',
                 }}
               >
                 {/* TIME */}
@@ -816,7 +816,7 @@ const StatCard = ({ icon: Icon, label, value, variant, sub }: {
         <Icon size={17} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[9px] font-sans text-zinc-500 uppercase tracking-widest mb-1">{label}</div>
+        <div className="text-[10px] font-sans text-zinc-500 uppercase tracking-widest mb-1">{label}</div>
         <div className={`text-2xl font-sans font-bold tabular-nums leading-none ${cfg.value}`}>{value}</div>
         {sub && <div className="text-[9px] font-sans text-zinc-600 mt-1 uppercase tracking-wide">{sub}</div>}
       </div>
@@ -987,7 +987,7 @@ const ArenaDashboard = () => {
   }, [feedEntries]);
 
   return (
-    <div className="arena-container relative h-screen flex flex-col gap-3 p-3 bg-oled-black overflow-hidden">
+    <div className="arena-container relative h-full flex flex-col gap-3 p-3 bg-oled-black overflow-hidden">
 
       {/* ── AGENT VIABILITY MODAL ────────────────────────────────────────────── */}
       {selectedAgentId !== null && (

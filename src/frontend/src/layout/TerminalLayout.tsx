@@ -55,11 +55,11 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       </div>
 
       {/* Top Bar */}
-      <header className="min-h-[64px] flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-[10px] uppercase tracking-[0.15em] shrink-0">
+      <header className="min-h-[64px] flex items-center justify-between px-4 border-b border-terminal-border bg-terminal-black text-xs uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-3">
-          <Terminal size={12} className="text-neon-green" />
-          <span className="text-neon-green font-bold glow-green">AGENT BATTLE ARENA</span>
-          <span className="text-zinc-700">// v2.1</span>
+          <Terminal size={14} className="text-neon-green" />
+          <span className="text-neon-green font-bold glow-green tracking-widest">AGENT BATTLE ARENA</span>
+          <span className="text-zinc-700">// v2.2</span>
         </div>
         <div className="header-button-row flex items-center gap-3 flex-nowrap overflow-x-auto snap-x snap-mandatory">
           <SystemHeader bots={bots} />
@@ -83,20 +83,20 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
         <div className="flex items-center gap-2 px-4 py-2 border-r border-terminal-border shrink-0">
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-green/30 bg-accent-green/5">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse shrink-0" />
-            <span className="text-[9px] font-mono font-bold text-accent-green tabular-nums">{aliveCount}</span>
-            <span className="text-[9px] font-mono text-accent-green/70 uppercase tracking-widest">ALIVE</span>
+            <span className="text-[10px] font-mono font-bold text-accent-green tabular-nums">{aliveCount}</span>
+            <span className="text-[10px] font-mono text-accent-green/70 uppercase tracking-widest">ALIVE</span>
           </div>
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-amber/30 bg-accent-amber/5">
-            <span className="text-[9px] font-mono font-bold text-accent-amber tabular-nums">{avgBalance.toFixed(0)}c</span>
-            <span className="text-[9px] font-mono text-accent-amber/70 uppercase tracking-widest">EFF</span>
+            <span className="text-[10px] font-mono font-bold text-accent-amber tabular-nums">{avgBalance.toFixed(0)}c</span>
+            <span className="text-[10px] font-mono text-accent-amber/70 uppercase tracking-widest">EFF</span>
           </div>
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-cyan/30 bg-accent-cyan/5">
-            <span className="text-[9px] font-mono font-bold text-accent-cyan tabular-nums">{researchMkts}</span>
-            <span className="text-[9px] font-mono text-accent-cyan/70 uppercase tracking-widest">RSC</span>
+            <span className="text-[10px] font-mono font-bold text-accent-cyan tabular-nums">{researchMkts}</span>
+            <span className="text-[10px] font-mono text-accent-cyan/70 uppercase tracking-widest">RSC</span>
           </div>
           <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-accent-red/30 bg-accent-red/5">
-            <span className="text-[9px] font-mono font-bold text-accent-red tabular-nums">{lethality.toFixed(0)}%</span>
-            <span className="text-[9px] font-mono text-accent-red/70 uppercase tracking-widest">DEATH</span>
+            <span className="text-[10px] font-mono font-bold text-accent-red tabular-nums">{lethality.toFixed(0)}%</span>
+            <span className="text-[10px] font-mono text-accent-red/70 uppercase tracking-widest">DEATH</span>
           </div>
         </div>
         {/* View tabs */}
@@ -105,7 +105,7 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
             <button
               key={view}
               onClick={() => onViewChange(view)}
-              className={`px-4 py-1.5 text-[10px] uppercase tracking-wider border transition-all whitespace-nowrap ${
+              className={`px-4 py-1.5 text-xs uppercase tracking-wider border transition-all whitespace-nowrap ${
                 activeView === view
                   ? 'border-neon-green/50 text-neon-green bg-neon-green/5'
                   : 'border-transparent text-zinc-600 hover:text-zinc-300 hover:bg-white/5'
@@ -118,8 +118,11 @@ const TerminalLayout = ({ activeView, onViewChange, children }: TerminalLayoutPr
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-6xl mx-auto">{children}</div>
+      <main className={`flex-1 min-h-0 ${activeView === 'dashboard' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6'}`}>
+        {activeView === 'dashboard'
+          ? children
+          : <div className="max-w-6xl mx-auto">{children}</div>
+        }
       </main>
 
       {/* Bottom Status */}

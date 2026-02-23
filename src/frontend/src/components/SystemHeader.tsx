@@ -18,44 +18,44 @@ const SystemHeader = ({ bots }: SystemHeaderProps) => {
   return (
     <div className="flex items-center gap-5">
       {/* Agents Online */}
-      <div className="flex items-center gap-1.5">
-        <Users size={10} className="text-neon-green" />
-        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">AGENTS:</span>
-        <span className="text-[10px] text-neon-green font-bold">{alive}</span>
+      <div className="flex items-center gap-2">
+        <Users size={12} className="text-neon-green" />
+        <span className="text-xs text-zinc-500 uppercase tracking-wider">AGENTS:</span>
+        <span className="text-xs text-neon-green font-bold">{alive}</span>
       </div>
 
       {/* Casualties */}
       {dead > 0 && (
-        <div className="flex items-center gap-1.5">
-          <Skull size={10} className="text-alert-red" />
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">KIA:</span>
-          <span className="text-[10px] text-alert-red font-bold">{dead}</span>
+        <div className="flex items-center gap-2">
+          <Skull size={12} className="text-alert-red" />
+          <span className="text-xs text-zinc-500 uppercase tracking-wider">KIA:</span>
+          <span className="text-xs text-alert-red font-bold">{dead}</span>
         </div>
       )}
 
       <span className="text-zinc-700">|</span>
 
       {/* Open Markets */}
-      <div className="flex items-center gap-1.5">
-        <Search size={10} className="text-neon-cyan" />
-        <span className="text-[10px] text-zinc-500 uppercase tracking-wider">MARKETS:</span>
-        <span className="text-[10px] text-neon-cyan font-bold">{openMarkets}</span>
+      <div className="flex items-center gap-2">
+        <Search size={12} className="text-neon-cyan" />
+        <span className="text-xs text-zinc-500 uppercase tracking-wider">MARKETS:</span>
+        <span className="text-xs text-neon-cyan font-bold">{openMarkets}</span>
       </div>
 
       <span className="text-zinc-700">|</span>
 
       {/* Uplink Status */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         {isOnline ? (
           <>
-            <Wifi size={10} className="text-neon-green" />
-            <span className="text-[10px] text-neon-green uppercase tracking-wider font-bold">UPLINK</span>
+            <Wifi size={12} className="text-neon-green" />
+            <span className="text-xs text-neon-green uppercase tracking-wider font-bold">UPLINK</span>
             <span className="w-1.5 h-1.5 bg-neon-green rounded-full animate-pulse" />
           </>
         ) : (
           <>
-            <WifiOff size={10} className="text-alert-red" />
-            <span className="text-[10px] text-alert-red uppercase tracking-wider font-bold">OFFLINE</span>
+            <WifiOff size={12} className="text-alert-red" />
+            <span className="text-xs text-alert-red uppercase tracking-wider font-bold">OFFLINE</span>
             <span className="w-1.5 h-1.5 bg-alert-red rounded-full" />
           </>
         )}

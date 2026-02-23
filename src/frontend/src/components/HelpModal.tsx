@@ -29,8 +29,8 @@ const HelpModal = ({ onClose }: HelpModalProps) => {
       className="fixed inset-0 z-[200] flex items-center justify-center p-4"
       onClick={onClose}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+      {/* Backdrop — semi-transparent so arena remains visible beneath */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       {/* Modal */}
       <div
