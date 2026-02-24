@@ -1,3 +1,48 @@
+# Plan: Frontend v3.2 — Dark Forest Entropy Grinder — COMPLETED 2026-02-23
+
+**Status: ALL STEPS COMPLETE**
+**Achieved:** Single SVG canvas arena replaces all bento panels. Center entropy well (shrinking black hole), pulsing agent nodes orbiting the well in 3 rings (balanced by wealth), betrayal lines (green alliance / red pulsing defection), graveyard debris (dead agent X shards accumulating at bottom), hover prisoner's dilemma heatmap (cooperation % + CC/CD/DC/DD outcomes), minimal TerminalLayout header, metrics bar with well-drain indicator.
+
+| Step | Item | Status |
+|------|------|--------|
+| 1  | ArenaDashboard: rip out bento grid — single SVG canvas | ✅ Done |
+| 2  | EntropyWell: radial gradient + feGaussianBlur glow + pulsing rings | ✅ Done |
+| 3  | OrbitRings: 3 faint dashed guide circles | ✅ Done |
+| 4  | AgentNodeFixed: orbital positions via golden-angle + animTick | ✅ Done |
+| 5  | BetrayalLines: proximity filter + defection rate coloring | ✅ Done |
+| 6  | GraveyardDebris: accumulate dead agent X shards with opacity | ✅ Done |
+| 7  | PDHeatmap: fixed overlay, cooperation bars, CC/CD/DC/DD outcomes | ✅ Done |
+| 8  | MetricsBar: well-drain progress bar + ALIVE/LETHALITY/KIA pills | ✅ Done |
+| 9  | ResizeObserver: SVG adapts to container dimensions | ✅ Done |
+| 10 | TerminalLayout: minimal header (h-10, no SystemHeader, no tabs) | ✅ Done |
+| 11 | index.css: entropy-well-glow, betrayal-pulse, shard-appear, dark-forest-canvas | ✅ Done |
+| 12 | tsc --noEmit: 0 errors | ✅ Done |
+
+---
+
+# Plan: Frontend v3.1 — Danger Layer — COMPLETED 2026-02-23
+
+**Status: ALL STEPS COMPLETE**
+**Achieved:** pure-metrics nav, LETHALITY pulse, pre-death glow (balance < 36c), dead scars, dominance crown, idle ticks badge, next-tick footer countdown.
+
+| Step | Item | Status |
+|------|------|--------|
+| 1  | TerminalLayout nav → metrics-navbar (ALIVE / LETHALITY / RESEARCH) | ✅ Done |
+| 2  | LETHALITY animate-pulse font-bold when > 50% | ✅ Done |
+| 3  | Remove nav tabs (use ⌘K command palette for view switching) | ✅ Done |
+| 4  | BattlePanel: .agent-row-danger glow when balance < ENTROPY_DANGER (36c) | ✅ Done |
+| 5  | BattlePanel: .agent-row-dead-scar diagonal line on dead rows | ✅ Done |
+| 6  | BattlePanel: ♛ crown prefix on highest-balance alive agent | ✅ Done |
+| 7  | BattlePanel: idle ticks "{n}i" in accent-amber when idle ≥ 1 tick | ✅ Done |
+| 8  | AgentTopology: dead node diagonal SVG scar + label line-through | ✅ Done |
+| 9  | AgentTopology: DOMINANT text badge + rotating ring + ♛ glyph | ✅ Done |
+| 10 | Footer: NEXT TICK countdown (10→1, pulses red ≤ 3s) | ✅ Done |
+| 11 | index.css: .agent-row-danger + .agent-row-dead-scar CSS | ✅ Done |
+| 12 | Pruned unused vars (kiaFlash, avgBalance, VIEW_LABELS) for noUnusedLocals | ✅ Done |
+| 13 | tsc --noEmit: 0 errors | ✅ Done |
+
+---
+
 # Plan: Modern 2026 Agent Dashboard (Frontend v3.1) — COMPLETED 2026-02-22
 
 **Status: ALL STEPS COMPLETE**

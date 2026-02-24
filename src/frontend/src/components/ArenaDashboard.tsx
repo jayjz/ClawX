@@ -1,909 +1,570 @@
-// ClawX Arena — ARENA DASHBOARD // BENTO LAYOUT
-// 2026 Premium Pivot: flat OLED black, 1px titanium borders, accent palette.
-// Left: BattlePanel (Order Book table). Center: stat bento + topology + markets. Right: ledger stream.
-// Polish v2: StatCard flash · AgentTopology tooltips + kb-nav · LedgerStream intensity + auto-scroll
-// v5 Bloat Purge: stripped glassmorphism, spatial drift, particle sparks, explosion rings, graveyard row
-// v6 Institutional Grid: BattlePanel → flat monospace table (rank/handle/balance/ticks/status)
-// v7 HF Pipeline: useArenaStream wired — WS deltas → cache invalidation + live EVT column + live pulse ledger
+// ClawX Arena — DARK FOREST ENTROPY GRINDER // v3.3
+// 2026-02-23: Single SVG canvas. Zero panels. Pure game-theory consequence.
+// Center entropy well · orbital agents · betrayal lines · graveyard debris · PD heatmap
+// v3.3: Slide-in battleground panel · sparklines · floating ⌘K event bridge
 
 import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useBots, useMarkets, useActivityFeed } from '../api/client';
 import { useArenaStream, type StreamEvent } from '../hooks';
-import { Users, DollarSign, Search, Skull, Clock, ArrowRight } from 'lucide-react';
-import { formatCountdown } from '../utils/bot-utils';
 import CommandPalette, { type CommandId } from './CommandPalette';
 import AgentViabilityModal from './AgentViabilityModal';
 import TickerBar from './TickerBar';
-import type { Bot, ActivityEntry, Market } from '../types';
+import type { Bot, ActivityEntry } from '../types';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-type StatVariant = 'green' | 'amber' | 'cyan' | 'red';
+const INITIAL_BALANCE    = 1000;
+const MAX_WELL_RAD_FRAC  = 0.20;
+const ORBIT_RADII        = [105, 185, 265] as const;
+const ORBIT_SPEEDS       = [22, 13, 7]    as const; // deg/s
+const GOLDEN_ANGLE       = 137.508;
+const GRAVEYARD_Y_FRAC   = 0.80;
+const NODE_R_MIN         = 6;
+const NODE_R_MAX         = 16;
+const LINE_MAX_DIST      = 210;
+const ENTROPY_DANGER     = 36;
+const MAX_SPARK          = 30; // 30 × 10s = 5-min sparkline window
 
-const STAT_CONFIG: Record<StatVariant, {
-  icon: string;
-  value: string;
-  border: string;
-  shadow: string;
-  shadowFlash: string;
-}> = {
-  green: {
-    icon:        'bg-accent-green/10 text-accent-green rounded-lg',
-    value:       'text-accent-green',
-    border:      'border-accent-green/20',
-    shadow:      '0 0 32px rgba(0,255,159,0.06)',
-    shadowFlash: '0 0 56px rgba(0,255,159,0.28), 0 0 16px rgba(0,255,159,0.16)',
-  },
-  amber: {
-    icon:        'bg-accent-amber/10 text-accent-amber rounded-lg',
-    value:       'text-accent-amber',
-    border:      'border-accent-amber/20',
-    shadow:      '0 0 32px rgba(255,149,0,0.06)',
-    shadowFlash: '0 0 56px rgba(255,149,0,0.28), 0 0 16px rgba(255,149,0,0.16)',
-  },
-  cyan: {
-    icon:        'bg-accent-cyan/10 text-accent-cyan rounded-lg',
-    value:       'text-accent-cyan',
-    border:      'border-accent-cyan/20',
-    shadow:      '0 0 32px rgba(0,240,255,0.06)',
-    shadowFlash: '0 0 56px rgba(0,240,255,0.28), 0 0 16px rgba(0,240,255,0.16)',
-  },
-  red: {
-    icon:        'bg-accent-red/10 text-accent-red rounded-lg',
-    value:       'text-accent-red',
-    border:      'border-accent-red/20',
-    shadow:      '0 0 32px rgba(255,59,48,0.06)',
-    shadowFlash: '0 0 56px rgba(255,59,48,0.28), 0 0 16px rgba(255,59,48,0.16)',
-  },
-};
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-const SOURCE_BADGE: Record<string, string> = {
-  RESEARCH: 'border-accent-cyan/40 text-accent-cyan bg-accent-cyan/5',
-  GITHUB:   'border-accent-green/30 text-accent-green bg-accent-green/5',
-  NEWS:     'border-accent-amber/30 text-accent-amber bg-accent-amber/5',
-  WEATHER:  'border-zinc-600/30 text-zinc-400 bg-zinc-700/5',
-};
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-/** Survival ticks since bot creation (10s per tick) */
-function survivalTicks(createdAt: string, now: number): number {
-  return Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 10_000));
+interface AgentPos {
+  bot:    Bot;
+  x:      number;
+  y:      number;
+  ring:   0 | 1 | 2;
+  orbitR: number;
+  nodeR:  number;
 }
 
-// ── Top Bar ────────────────────────────────────────────────────────────────────
+interface GraveyardShard {
+  botId:   number;
+  handle:  string;
+  xFrac:   number;
+  yFrac:   number;
+  rot:     number;
+  opacity: number;
+}
 
-const TopBar = ({ aliveCount, deadCount, marketCount, onCommandOpen, wsConnected }: {
-  aliveCount: number;
-  deadCount: number;
-  marketCount: number;
+interface SparkPt { t: number; v: number; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function nodeRadius(balance: number, maxBal: number): number {
+  const frac = maxBal > 0 ? balance / maxBal : 0.5;
+  return NODE_R_MIN + frac * (NODE_R_MAX - NODE_R_MIN);
+}
+
+// ── Entropy Well ──────────────────────────────────────────────────────────────
+
+const EntropyWell = memo(({ cx, cy, r }: { cx: number; cy: number; r: number }) => (
+  <g>
+    <defs>
+      <radialGradient id="ewg" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stopColor="#000000" stopOpacity="1" />
+        <stop offset="55%"  stopColor="#1a0000" stopOpacity="0.95" />
+        <stop offset="80%"  stopColor="#3d0000" stopOpacity="0.55" />
+        <stop offset="100%" stopColor="#FF3B30"  stopOpacity="0" />
+      </radialGradient>
+      <filter id="ewf" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="10" result="blur" />
+        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+      </filter>
+    </defs>
+
+    {/* Outer glow halos */}
+    <circle cx={cx} cy={cy} r={r * 1.9} fill="none" stroke="#FF3B30" strokeWidth={0.8} opacity={0.07}>
+      <animate attributeName="r"       values={`${r*1.75};${r*2.1};${r*1.75}`} dur="4.5s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.07;0.16;0.07"                  dur="4.5s" repeatCount="indefinite" />
+    </circle>
+    <circle cx={cx} cy={cy} r={r * 1.35} fill="none" stroke="#FF3B30" strokeWidth={0.5} opacity={0.18}>
+      <animate attributeName="r" values={`${r*1.25};${r*1.5};${r*1.25}`} dur="2.9s" repeatCount="indefinite" />
+    </circle>
+
+    {/* Event horizon */}
+    <circle cx={cx} cy={cy} r={r} fill="url(#ewg)" filter="url(#ewf)" />
+
+    {/* Singularity */}
+    <circle cx={cx} cy={cy} r={r * 0.32} fill="#000" opacity={0.98} />
+    <circle cx={cx} cy={cy} r={r * 0.32} fill="none" stroke="#FF3B30" strokeWidth={0.9} opacity={0.5}>
+      <animate attributeName="opacity" values="0.5;0.9;0.5" dur="1.4s" repeatCount="indefinite" />
+    </circle>
+
+    {/* Label */}
+    <text x={cx} y={cy + 4} textAnchor="middle" fill="#FF3B30" fontSize={8}
+      fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.45} letterSpacing="2">
+      ENTROPY
+    </text>
+  </g>
+));
+
+// ── Orbit Rings ───────────────────────────────────────────────────────────────
+
+const OrbitRings = memo(({ cx, cy }: { cx: number; cy: number }) => (
+  <g opacity={0.055}>
+    {ORBIT_RADII.map((r, i) => (
+      <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke="#00FF9F"
+        strokeWidth={0.5} strokeDasharray="3,8" />
+    ))}
+  </g>
+));
+
+// ── Betrayal Lines ────────────────────────────────────────────────────────────
+
+interface BLine {
+  key: string;
+  x1: number; y1: number; x2: number; y2: number;
+  defection: boolean;
+  opacity: number;
+  sw: number;
+}
+
+const BetrayalLines = memo(({
+  positions, eventCountsByBot,
+}: {
+  positions: AgentPos[];
+  eventCountsByBot: Map<number, { W: number; total: number }>;
+}) => {
+  const lines = useMemo<BLine[]>(() => {
+    const out: BLine[] = [];
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const a = positions[i];
+        const b = positions[j];
+        if (!a || !b) continue;
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > LINE_MAX_DIST) continue;
+        const as = eventCountsByBot.get(a.bot.id) ?? { W: 0, total: 1 };
+        const bs = eventCountsByBot.get(b.bot.id) ?? { W: 0, total: 1 };
+        const defRate = (as.W + bs.W) / (as.total + bs.total + 1);
+        const defection = defRate > 0.35;
+        const df = 1 - dist / LINE_MAX_DIST;
+        out.push({
+          key: `${a.bot.id}-${b.bot.id}`,
+          x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+          defection,
+          opacity: df * (defection ? 0.55 : 0.22),
+          sw: df * (defection ? 1.5 : 0.7),
+        });
+      }
+    }
+    return out;
+  }, [positions, eventCountsByBot]);
+
+  return (
+    <g>
+      {lines.map((l) => (
+        <line
+          key={l.key}
+          x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+          stroke={l.defection ? '#FF3B30' : '#00FF9F'}
+          strokeWidth={l.sw}
+          opacity={l.opacity}
+          strokeDasharray={l.defection ? '3,5' : undefined}
+        >
+          {l.defection && (
+            <animate attributeName="opacity"
+              values={`${l.opacity};${l.opacity * 0.2};${l.opacity}`}
+              dur="1.3s" repeatCount="indefinite" />
+          )}
+        </line>
+      ))}
+    </g>
+  );
+});
+
+// ── Graveyard Debris ──────────────────────────────────────────────────────────
+
+const GraveyardDebris = memo(({ shards, W, H }: {
+  shards: GraveyardShard[];
+  W: number;
+  H: number;
+}) => {
+  const yStart = H * GRAVEYARD_Y_FRAC;
+  const yRange = H * (1 - GRAVEYARD_Y_FRAC) - 24;
+  return (
+    <g>
+      <line x1={0} y1={yStart} x2={W} y2={yStart}
+        stroke="#FF3B30" strokeWidth={0.4} opacity={0.10} strokeDasharray="5,10" />
+      <text x={10} y={yStart + 12} fill="#FF3B30" fontSize={7}
+        fontFamily='"JetBrains Mono","Courier New",monospace'
+        opacity={0.18} letterSpacing="2">
+        GRAVEYARD
+      </text>
+      {shards.map((s) => {
+        const x = s.xFrac * W;
+        const y = yStart + s.yFrac * yRange;
+        const r = 3.5;
+        return (
+          <g key={s.botId}
+            transform={`translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${s.rot})`}
+            opacity={s.opacity}>
+            <line x1={-r} y1={-r} x2={r} y2={r} stroke="#FF3B30" strokeWidth={1.2} />
+            <line x1={r}  y1={-r} x2={-r} y2={r} stroke="#FF3B30" strokeWidth={1.2} />
+            <text x={0} y={r + 10} textAnchor="middle" fill="#FF3B30" fontSize={7}
+              fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.55}>
+              {s.handle.slice(0, 8)}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
+// ── Agent Node ────────────────────────────────────────────────────────────────
+
+interface AgentNodeProps {
+  pos:         AgentPos;
+  isDominant:  boolean;
+  isHovered:   boolean;
+  recentEvent: StreamEvent['e'] | undefined;
+  onHover:     (bot: Bot | null) => void;
+  onHoverPos:  (x: number, y: number) => void;
+  onClick:     (bot: Bot) => void;
+}
+
+const AgentNodeFixed = memo(({
+  pos, isDominant, isHovered, recentEvent, onHover, onHoverPos, onClick,
+}: AgentNodeProps) => {
+  const { bot, x, y, nodeR } = pos;
+  const balance  = Number(bot.balance);
+  const isDanger = balance < ENTROPY_DANGER;
+  const color    = isDanger ? '#FF3B30' : '#00FF9F';
+  const pulseDur = `${2.2 + (bot.id % 5) * 0.28}s`;
+  const flashCol = recentEvent === 'L' ? '#FF3B30' : recentEvent === 'W' ? '#FF9500' : null;
+  const label    = bot.handle.length > 10 ? bot.handle.slice(0, 9) + '…' : bot.handle;
+
+  return (
+    <g
+      style={{ cursor: 'pointer' }}
+      onMouseEnter={(e) => { onHover(bot); onHoverPos(e.clientX, e.clientY); }}
+      onMouseLeave={() => onHover(null)}
+      onClick={() => onClick(bot)}
+    >
+      {isDominant && (
+        <g>
+          <circle cx={x} cy={y} r={nodeR + 15} fill="none"
+            stroke="#00FF9F" strokeWidth={1.2} opacity={0.5} strokeDasharray="4,3">
+            <animateTransform attributeName="transform" type="rotate"
+              from={`0 ${x} ${y}`} to={`360 ${x} ${y}`}
+              dur="7s" repeatCount="indefinite" />
+          </circle>
+          <text x={x} y={y - nodeR - 8} textAnchor="middle" fill="#00FF9F"
+            fontSize={11} fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.9}>
+            ♛
+          </text>
+        </g>
+      )}
+
+      {isDanger && (
+        <circle cx={x} cy={y} r={nodeR + 6} fill="none"
+          stroke="#FF3B30" strokeWidth={1.1} opacity={0.55}>
+          <animate attributeName="opacity" values="0.55;0.1;0.55" dur="1s" repeatCount="indefinite" />
+        </circle>
+      )}
+
+      {isHovered && (
+        <circle cx={x} cy={y} r={nodeR + 9} fill="none"
+          stroke={color} strokeWidth={1.4} opacity={0.7} strokeDasharray="3,2" />
+      )}
+
+      {flashCol && (
+        <circle cx={x} cy={y} r={nodeR + 7} fill="none"
+          stroke={flashCol} strokeWidth={1.5} opacity={0.85} />
+      )}
+
+      <circle cx={x} cy={y} r={nodeR} fill="none" stroke={color} strokeWidth={1} opacity={0.18}>
+        <animate attributeName="r"
+          values={`${nodeR};${nodeR + 11};${nodeR}`} dur={pulseDur} repeatCount="indefinite" />
+        <animate attributeName="opacity"
+          values="0.18;0.02;0.18" dur={pulseDur} repeatCount="indefinite" />
+      </circle>
+
+      <circle cx={x} cy={y} r={nodeR} fill={color} opacity={0.88}>
+        <animate attributeName="opacity" values="0.88;0.62;0.88"
+          dur={`${3 + (bot.id % 4) * 0.4}s`} repeatCount="indefinite" />
+      </circle>
+
+      <text x={x} y={y + nodeR + 13} textAnchor="middle" fill={color} fontSize={9}
+        fontFamily='"JetBrains Mono","Courier New",monospace'
+        opacity={isHovered ? 1 : 0.82} letterSpacing="0.3">
+        {label}
+      </text>
+      <text x={x} y={y + nodeR + 22} textAnchor="middle" fill={color} fontSize={8}
+        fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.38}>
+        {balance.toFixed(0)}c
+      </text>
+    </g>
+  );
+});
+
+// ── Prisoner's Dilemma Heatmap ────────────────────────────────────────────────
+
+const PDHeatmap = memo(({
+  hoveredBot, allBots, eventCountsByBot, screenX, screenY,
+}: {
+  hoveredBot:       Bot;
+  allBots:          Bot[];
+  eventCountsByBot: Map<number, { W: number; total: number }>;
+  screenX:          number;
+  screenY:          number;
+}) => {
+  const others = allBots.filter(b => b.status === 'ALIVE' && b.id !== hoveredBot.id).slice(0, 8);
+  const hs     = eventCountsByBot.get(hoveredBot.id) ?? { W: 0, total: 1 };
+  const hCoop  = 1 - (hs.W / Math.max(hs.total, 1));
+
+  const boxW = 224;
+  const boxH = 82 + others.length * 22;
+  const bx   = Math.min(screenX + 16, (typeof window !== 'undefined' ? window.innerWidth : 1200) - boxW - 16);
+  const by   = Math.min(screenY - 20, (typeof window !== 'undefined' ? window.innerHeight : 700) - boxH - 16);
+
+  return (
+    <div className="fixed z-50 pointer-events-none" style={{ left: bx, top: by, width: boxW }}>
+      <div className="rounded-xl border border-zinc-700 bg-black/96 backdrop-blur-xl p-3"
+        style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.95), 0 0 24px rgba(255,59,48,0.08)' }}>
+
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-zinc-800">
+          <span className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: hoveredBot.status === 'ALIVE' ? '#00FF9F' : '#FF3B30' }} />
+          <span className="text-xs font-sans font-bold text-white truncate">{hoveredBot.handle}</span>
+          <span className="ml-auto text-[10px] font-mono text-zinc-500">
+            {Number(hoveredBot.balance).toFixed(0)}c
+          </span>
+        </div>
+
+        {/* Self cooperation bar */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[9px] font-sans text-zinc-500 uppercase tracking-wider">Cooperation</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${hCoop * 100}%`, background: hCoop > 0.5 ? '#00FF9F' : '#FF3B30' }} />
+            </div>
+            <span className="text-[9px] font-mono text-zinc-400">{(hCoop * 100).toFixed(0)}%</span>
+          </div>
+        </div>
+
+        {/* PD matrix */}
+        <div className="text-[8px] font-sans text-zinc-600 uppercase tracking-wider mb-1.5">
+          DILEMMA vs FIELD
+        </div>
+        {others.map(other => {
+          const os    = eventCountsByBot.get(other.id) ?? { W: 0, total: 1 };
+          const oCoop = 1 - (os.W / Math.max(os.total, 1));
+          const out   = hCoop > 0.5 && oCoop > 0.5 ? 'CC'
+            : hCoop <= 0.5 && oCoop <= 0.5          ? 'DD'
+            : hCoop > 0.5                            ? 'CD' : 'DC';
+          const outCol = out === 'CC' ? '#00FF9F' : out === 'DD' ? '#FF3B30' : '#FF9500';
+          return (
+            <div key={other.id} className="flex items-center gap-1.5 py-[2px]">
+              <span className="text-[9px] font-mono text-zinc-400 w-20 truncate">
+                {other.handle.slice(0, 10)}
+              </span>
+              <div className="flex-1 h-1 rounded-full bg-zinc-800 overflow-hidden">
+                <div className="h-full rounded-full"
+                  style={{ width: `${oCoop * 100}%`, background: oCoop > 0.5 ? '#00FF9F' : '#FF3B30' }} />
+              </div>
+              <span className="text-[9px] font-mono font-bold w-6 text-right"
+                style={{ color: outCol }}>{out}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+// ── Metrics Bar ───────────────────────────────────────────────────────────────
+
+const MetricsBar = memo(({
+  aliveCount, deadCount, lethality, totalEconomy,
+  wellRadius, maxWellRadius, wsConnected, kiaFlash, onCommandOpen,
+}: {
+  aliveCount:    number;
+  deadCount:     number;
+  lethality:     number;
+  totalEconomy:  number;
+  wellRadius:    number;
+  maxWellRadius: number;
+  wsConnected:   boolean;
+  kiaFlash:      boolean;
   onCommandOpen: () => void;
-  wsConnected: boolean;
 }) => (
-  <div className="flex items-center justify-between px-5 h-12 rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl shrink-0" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-    <div className="flex items-center gap-5">
-      <span className="text-sm font-sans font-bold text-white tracking-tight">CLAWX ARENA</span>
-      <span className="text-[10px] font-sans text-zinc-500 uppercase tracking-widest hidden lg:block">
-        ENTROPY 0.50c/TICK · SHA256 LEDGER · DECIMAL PURITY
+  <div
+    className="flex items-center justify-between px-4 h-10 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shrink-0"
+    style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
+  >
+    <div className="flex items-center gap-1.5">
+      <span className="text-[9px] font-sans font-bold text-white tracking-tight mr-2">DARK FOREST</span>
+
+      <span className="px-2 py-0.5 rounded-full border border-accent-green/30 bg-accent-green/10 text-[9px] font-mono text-accent-green">
+        {aliveCount} ALIVE
+      </span>
+
+      <span className={`px-2 py-0.5 rounded-full border text-[9px] font-mono ${
+        lethality > 50
+          ? 'border-accent-red/50 bg-accent-red/15 text-accent-red animate-pulse'
+          : 'border-accent-red/30 bg-accent-red/5 text-accent-red/80'
+      }`}>
+        {lethality.toFixed(0)}% LETHALITY
+      </span>
+
+      <span className={`px-2 py-0.5 rounded-full border text-[9px] font-mono transition-colors ${
+        kiaFlash
+          ? 'border-accent-red/60 bg-accent-red/20 text-accent-red animate-pulse'
+          : 'border-zinc-700/50 bg-zinc-800/30 text-zinc-500'
+      }`}>
+        ☠ {deadCount} KIA
+      </span>
+
+      <span className="px-2 py-0.5 rounded-full border border-accent-amber/30 bg-accent-amber/5 text-[9px] font-mono text-accent-amber">
+        {totalEconomy.toFixed(0)}c ECONOMY
       </span>
     </div>
 
-    <div className="flex items-center gap-5">
-      <div className="flex items-center gap-4 text-[10px] font-sans uppercase tracking-widest">
-        <span className="flex items-center gap-1.5 text-accent-green">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
-          {aliveCount} ALIVE
-        </span>
-        <span className="flex items-center gap-1.5 text-accent-red/70">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-red/60" />
-          {deadCount} DEAD
-        </span>
-        <span className="flex items-center gap-1.5 text-accent-cyan">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan" />
-          {marketCount} MARKETS
-        </span>
-        <span className={`flex items-center gap-1.5 ${wsConnected ? 'text-accent-green' : 'text-zinc-600'}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-accent-green animate-pulse' : 'bg-zinc-700'}`} />
-          WS
-        </span>
+    <div className="flex items-center gap-3">
+      {/* Well drain indicator */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-[8px] font-sans text-zinc-600 uppercase tracking-wider">WELL</span>
+        <div className="w-14 h-1 rounded-full bg-zinc-800 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-accent-red/70 transition-all duration-1000"
+            style={{ width: `${maxWellRadius > 0 ? (wellRadius / maxWellRadius) * 100 : 0}%` }}
+          />
+        </div>
       </div>
+
+      <span className={`flex items-center gap-1 text-[9px] font-mono ${wsConnected ? 'text-accent-green' : 'text-zinc-600'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${wsConnected ? 'bg-accent-green animate-pulse' : 'bg-zinc-700'}`} />
+        WS
+      </span>
 
       <button
         onClick={onCommandOpen}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 bg-oled-black hover:border-accent-green/50 hover:bg-titan-grey transition-all"
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-zinc-700 bg-oled-black hover:border-accent-green/50 transition-all"
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-accent-green/70 animate-pulse shrink-0" />
-        <kbd className="text-xs font-mono text-accent-green font-bold leading-none">⌘K</kbd>
-        <span className="text-[9px] font-sans text-zinc-400 uppercase tracking-widest leading-none">CMD</span>
+        <kbd className="text-[10px] font-mono text-accent-green font-bold leading-none">⌘K</kbd>
       </button>
     </div>
   </div>
-);
+));
 
-// ── Battle Panel — Order Book flat table (v6) ─────────────────────────────────
-// High-density monospace grid. No icons, no SVG, no CSS animations.
-// Alive: accent-green bold. Dead: accent-red at 30% opacity.
-// Columns: # | Handle | Balance | Ticks | Status | EVT (live WS event code)
+// ── Sparkline ─────────────────────────────────────────────────────────────────
 
-const EVT_COLOR: Record<string, string> = {
-  W: 'text-accent-amber',
-  L: 'text-accent-red',
-  R: 'text-accent-cyan',
-  H: 'text-zinc-700',
-};
-
-// Live-pulse label: maps stream event code → short badge for LedgerStream
-const EV_BADGE: Record<StreamEvent['e'], { label: string; color: string }> = {
-  W: { label: 'BET', color: 'text-accent-amber' },
-  L: { label: 'DIE', color: 'text-accent-red'   },
-  R: { label: 'RSC', color: 'text-accent-cyan'   },
-  H: { label: 'HBT', color: 'text-zinc-700'      },
-};
-
-const BattlePanel = memo(({
-  bots,
-  now,
-  liveEventByBotId,
-  onAgentClick,
-}: {
-  bots: Bot[];
-  now: number;
-  liveEventByBotId: Record<number, StreamEvent['e']>;
-  onAgentClick: (bot: Bot) => void;
+const Sparkline = memo(({ data, H, color }: {
+  data: SparkPt[]; H: number; color: string;
 }) => {
-  const sorted = useMemo(() => {
-    const alive = [...bots]
-      .filter((b) => b.status === 'ALIVE')
-      .sort((a, b) => Number(b.balance) - Number(a.balance));
-    const dead = [...bots]
-      .filter((b) => b.status === 'DEAD')
-      .sort((a, b) => b.id - a.id);
-    return [...alive, ...dead];
-  }, [bots]);
-
-  const aliveCount = useMemo(() => bots.filter((b) => b.status === 'ALIVE').length, [bots]);
-
-  return (
-    <div className="flex flex-col h-full">
-
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-titan-border shrink-0">
-        <span className="w-1.5 h-1.5 rounded-full bg-accent-green" />
-        <span className="text-[10px] font-mono font-bold text-accent-green uppercase tracking-widest">
-          ORDER BOOK
-        </span>
-        <span className="ml-auto text-[10px] font-mono text-zinc-600 tabular-nums">
-          {aliveCount} ALIVE
-        </span>
-      </div>
-
-      {/* Column headers */}
-      <div className="flex items-center px-3 py-1 border-b border-titan-border/50 shrink-0">
-        <span className="w-6 text-[9px] font-mono text-zinc-700 shrink-0">#</span>
-        <span className="flex-1 text-[9px] font-mono text-zinc-700 uppercase tracking-widest min-w-0">HANDLE</span>
-        <span className="w-[66px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">BAL</span>
-        <span className="w-[48px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">TICKS</span>
-        <span className="w-[46px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">ST</span>
-        <span className="w-[28px] text-[9px] font-mono text-zinc-700 text-right uppercase tracking-widest">EVT</span>
-      </div>
-
-      {/* Rows */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {sorted.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-[9px] font-mono text-zinc-700 uppercase tracking-widest">
-            NO AGENTS
-          </div>
-        ) : (
-          sorted.map((bot, i) => {
-            const isAlive   = bot.status === 'ALIVE';
-            const balance   = Number(bot.balance);
-            const ticks     = survivalTicks(bot.created_at, now);
-            const accentCls = isAlive ? 'text-accent-green' : 'text-accent-red';
-
-            return (
-              <div
-                key={bot.id}
-                className={`flex items-center px-3 py-[4px] border-b border-titan-border/25 hover:bg-titan-border/20 transition-colors cursor-pointer ${
-                  isAlive ? '' : 'opacity-30'
-                }`}
-                onClick={() => onAgentClick(bot)}
-              >
-                {/* Rank */}
-                <span className="w-6 text-[10px] font-mono text-zinc-600 tabular-nums shrink-0">
-                  {i + 1}
-                </span>
-
-                {/* Handle */}
-                <span className={`flex-1 text-[10px] font-mono font-bold truncate min-w-0 ${accentCls}`}>
-                  {bot.handle}
-                </span>
-
-                {/* Balance */}
-                <span className={`w-[66px] text-[10px] font-mono tabular-nums text-right ${accentCls}`}>
-                  {balance.toFixed(2)}c
-                </span>
-
-                {/* Survival ticks */}
-                <span className="w-[48px] text-[10px] font-mono text-zinc-500 tabular-nums text-right">
-                  {ticks > 0 ? ticks.toLocaleString() : '—'}
-                </span>
-
-                {/* Status */}
-                <span className={`w-[46px] text-[10px] font-mono font-bold text-right ${accentCls}`}>
-                  {isAlive ? '● LIV' : '● DED'}
-                </span>
-
-                {/* Live WS event code */}
-                {(() => {
-                  const evtCode = liveEventByBotId[bot.id];
-                  return (
-                    <span className={`w-[28px] text-[10px] font-mono font-bold text-right shrink-0 ${EVT_COLOR[evtCode ?? ''] ?? 'text-zinc-800'}`}>
-                      {evtCode ?? '·'}
-                    </span>
-                  );
-                })()}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-    </div>
-  );
-});
-
-// ── Agent Topology — labeled center-panel node graph + tooltips + kb-nav ──────
-
-const AG_VW      = 680;
-const AG_CELL_H  = 90;
-const AG_PAD_TOP = 44;
-const AG_PAD_BOT = 28;
-
-const AgentTopology = ({
-  bots,
-  recentActivity,
-  recentBotIds,
-  latestEvent,
-  onAgentClick,
-}: {
-  bots: Bot[];
-  recentActivity: Map<number, string>;
-  recentBotIds: Set<number>;
-  latestEvent: StreamEvent | null;
-  onAgentClick?: (bot: Bot) => void;
-}) => {
-  const all = useMemo(() =>
-    [...bots]
-      .sort((a, b) => {
-        if (a.status !== b.status) return a.status === 'ALIVE' ? -1 : 1;
-        return Number(b.balance) - Number(a.balance);
-      })
-      .slice(0, 42),
-  [bots]);
-
-  const N    = all.length;
-  const cols = Math.min(Math.max(N, 1), 6);
-  const rows = Math.ceil(N / cols);
-  const VH   = AG_PAD_TOP + rows * AG_CELL_H + AG_PAD_BOT;
-
-  const maxBalance = useMemo(
-    () => Math.max(...all.map((b) => Number(b.balance)), 1),
-    [all],
-  );
-
-  const nodes = useMemo(() => {
-    const cellW = AG_VW / cols;
-    return all.map((bot, i) => ({
-      bot,
-      x: +(cellW * (i % cols) + cellW / 2).toFixed(1),
-      y: +(AG_PAD_TOP + AG_CELL_H * Math.floor(i / cols) + 38).toFixed(1),
-    }));
-  }, [all, cols]);
-
-  const edges = useMemo(() => {
-    const links: [number, number][] = [];
-    for (let i = 0; i < N; i++) {
-      if (i + 1 < N && Math.floor((i + 1) / cols) === Math.floor(i / cols))
-        links.push([i, i + 1]);
-      if (i + cols < N) links.push([i, i + cols]);
-    }
-    return links;
-  }, [N, cols]);
-
-  const alive = bots.filter((b) => b.status === 'ALIVE');
-  const dead  = bots.filter((b) => b.status === 'DEAD');
-
-  const [hoveredBot, setHoveredBot] = useState<Bot | null>(null);
-  const [mousePos,   setMousePos]   = useState({ x: 0, y: 0 });
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // ── WS flash: amber=WAGER  red=LIQUIDATION  700ms burst per bot ─────────────
-  const [flashMap,    setFlashMap]   = useState<Partial<Record<number, StreamEvent['e']>>>({});
-  const flashTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-
-  useEffect(() => {
-    if (!latestEvent || (latestEvent.e !== 'W' && latestEvent.e !== 'L')) return;
-    const { b: botId, e: evtCode } = latestEvent;
-    const prevTimer = flashTimers.current.get(botId);
-    if (prevTimer !== undefined) clearTimeout(prevTimer);
-    setFlashMap(m => ({ ...m, [botId]: evtCode }));
-    flashTimers.current.set(botId, setTimeout(() => {
-      setFlashMap(m => { const n = { ...m }; delete n[botId]; return n; });
-      flashTimers.current.delete(botId);
-    }, 700));
-  }, [latestEvent]);
-
-  useEffect(() => {
-    const timers = flashTimers.current;
-    return () => { timers.forEach(clearTimeout); };
-  }, []);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = wrapperRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-  }, []);
-
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (N === 0) return;
-    const cur = selectedIdx ?? 0;
-    switch (e.key) {
-      case 'ArrowRight':
-        e.preventDefault();
-        setSelectedIdx(Math.min(cur + 1, N - 1));
-        break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        setSelectedIdx(Math.max(cur - 1, 0));
-        break;
-      case 'ArrowDown':
-        e.preventDefault();
-        setSelectedIdx(Math.min(cur + cols, N - 1));
-        break;
-      case 'ArrowUp':
-        e.preventDefault();
-        setSelectedIdx(Math.max(cur - cols, 0));
-        break;
-      case 'Escape':
-        e.preventDefault();
-        setSelectedIdx(null);
-        break;
-      case 'Enter':
-        e.preventDefault();
-        if (selectedIdx !== null && nodes[selectedIdx]) {
-          onAgentClick?.(nodes[selectedIdx].bot);
-        }
-        break;
-    }
-  }, [N, cols, selectedIdx, nodes]);
-
-  if (N === 0) {
+  const VW = 192;
+  if (data.length < 2) {
     return (
-      <div className="rounded-xl border border-titan-border bg-titan-grey p-10 text-center text-[10px] font-sans text-zinc-700 uppercase tracking-widest shrink-0">
-        NO AGENTS DEPLOYED
-      </div>
+      <svg viewBox={`0 0 ${VW} ${H}`} preserveAspectRatio="none"
+           width="100%" height={H} style={{ display: 'block' }}>
+        <line x1={0} y1={H * 0.5} x2={VW} y2={H * 0.5}
+          stroke={color} strokeWidth={0.6} opacity={0.15} strokeDasharray="4,5" />
+      </svg>
     );
   }
-
+  const vals  = data.map(p => p.v);
+  const lo    = Math.min(...vals);
+  const hi    = Math.max(...vals);
+  const span  = hi - lo || 1;
+  const inner = H - 6;
+  const pts   = data.map((p, i) => {
+    const x = (i / (data.length - 1)) * VW;
+    const y = 3 + inner - ((p.v - lo) / span) * inner;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
   return (
-    <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden shrink-0 outline-none focus-within:border-zinc-600 transition-colors" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-titan-border">
-        <div className="flex items-center gap-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
-          <span className="text-[10px] font-sans font-semibold text-accent-green uppercase tracking-widest">
-            AGENTS
-          </span>
-          <span className="text-[10px] font-sans text-zinc-600 uppercase tracking-widest">
-            {alive.length} ALIVE · {dead.length} DEAD
-          </span>
-        </div>
-        <span className="text-[9px] font-mono text-zinc-600 tabular-nums">
-          {selectedIdx !== null
-            ? `[${nodes[selectedIdx]?.bot.handle ?? '?'}]`
-            : `${N} NODES · ↑↓←→`
-          }
-        </span>
-      </div>
-
-      <div
-        ref={wrapperRef}
-        className="relative"
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoveredBot(null)}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-        role="grid"
-        aria-label="Agent topology graph"
-      >
-        <svg
-          viewBox={`0 0 ${AG_VW} ${VH}`}
-          width="100%"
-          height={VH}
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ display: 'block' }}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {Array.from({ length: Math.ceil(VH / 50) + 1 }, (_, r) =>
-            Array.from({ length: Math.ceil(AG_VW / 50) + 1 }, (_, c) => (
-              <circle key={`d-${r}-${c}`} cx={c * 50} cy={r * 50} r={0.8} fill="#2A2A2A" />
-            ))
-          )}
-
-          {edges.map(([a, b], i) => {
-            const aRecent = nodes[a]?.bot && recentBotIds.has(nodes[a].bot.id);
-            const bRecent = nodes[b]?.bot && recentBotIds.has(nodes[b].bot.id);
-            return (
-              <line
-                key={`e-${i}`}
-                x1={nodes[a]?.x ?? 0} y1={nodes[a]?.y ?? 0}
-                x2={nodes[b]?.x ?? 0} y2={nodes[b]?.y ?? 0}
-                stroke={aRecent && bRecent ? '#00FF9F' : '#2A2A2A'}
-                strokeWidth={aRecent && bRecent ? 0.6 : 0.8}
-                opacity={aRecent && bRecent ? 0.25 : 1}
-                strokeDasharray={
-                  nodes[a]?.bot.status === 'DEAD' || nodes[b]?.bot.status === 'DEAD'
-                    ? '2,3' : undefined
-                }
-              />
-            );
-          })}
-
-          {nodes.map(({ bot, x, y }, idx) => {
-            const isAlive   = bot.status === 'ALIVE';
-            const isRecent  = isAlive && recentBotIds.has(bot.id);
-            const isKbSel   = selectedIdx === idx;
-            const balance   = Number(bot.balance);
-            const r         = Math.max(6, Math.min(14, 6 + (balance / maxBalance) * 8));
-            const color      = isAlive ? '#00FF9F' : '#FF3B30';
-            const opacity    = isAlive ? 1 : 0.28;
-            const pulseDur   = `${2.2 + (bot.id % 6) * 0.28}s`;
-            const label      = bot.handle.length > 10 ? bot.handle.slice(0, 9) + '…' : bot.handle;
-            const flashEvt   = flashMap[bot.id];
-            const flashColor = flashEvt === 'L' ? '#FF3B30' : flashEvt === 'W' ? '#FF9500' : undefined;
-
-            return (
-              <g
-                key={bot.id}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredBot(bot)}
-                onMouseLeave={() => setHoveredBot(null)}
-                onClick={() => { setSelectedIdx(idx); onAgentClick?.(bot); }}
-              >
-                {isRecent && (
-                  <circle cx={x} cy={y} r={r + 5} fill="none" stroke="#00FF9F" strokeWidth={1.2} opacity={0.3} />
-                )}
-                {isKbSel && (
-                  <circle cx={x} cy={y} r={r + 8} fill="none"
-                    stroke={isAlive ? '#00FF9F' : '#FF3B30'} strokeWidth={1.5} opacity={0.6} strokeDasharray="3,2" />
-                )}
-                {isAlive && (
-                  <circle cx={x} cy={y} r={r} fill="none" stroke="#00FF9F" strokeWidth={1} opacity={0.15}>
-                    <animate attributeName="r" values={`${r};${r + 10};${r}`} dur={pulseDur} repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="0.2;0.02;0.2" dur={pulseDur} repeatCount="indefinite" />
-                  </circle>
-                )}
-                <circle cx={x} cy={y} r={r} fill={color} opacity={opacity}>
-                  {isAlive && (
-                    <animate attributeName="opacity" values="1;0.68;1"
-                      dur={`${3 + (bot.id % 4) * 0.4}s`} repeatCount="indefinite" />
-                  )}
-                </circle>
-                {/* WS flash overlay: amber=WAGER  red=LIQUIDATION */}
-                {flashColor && (
-                  <>
-                    <circle cx={x} cy={y} r={r + 7} fill="none"
-                      stroke={flashColor} strokeWidth="1.5" opacity="0.8" />
-                    <circle cx={x} cy={y} r={r} fill={flashColor} opacity="0.45" />
-                  </>
-                )}
-                <text x={x} y={y + r + 13} textAnchor="middle" fill={isKbSel ? (isAlive ? '#00FF9F' : '#FF3B30') : color}
-                  fontSize={9} fontFamily='"JetBrains Mono","Courier New",monospace'
-                  opacity={isAlive ? (isKbSel ? 1 : 0.85) : 0.32} letterSpacing="0.4">
-                  {label}
-                </text>
-                <text x={x} y={y + r + 23} textAnchor="middle" fill={color}
-                  fontSize={8} fontFamily='"JetBrains Mono","Courier New",monospace'
-                  opacity={isAlive ? 0.38 : 0.14}>
-                  {isAlive ? `${balance.toFixed(0)}c` : 'DEAD'}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {hoveredBot && (
-          <div className="absolute z-10 pointer-events-none" style={{ left: mousePos.x + 14, top: mousePos.y - 8 }}>
-            <div className="rounded-lg border border-titan-border bg-oled-black px-3 py-2.5 min-w-[160px]"
-              style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ background: hoveredBot.status === 'ALIVE' ? '#00FF9F' : '#FF3B30' }} />
-                <span className="text-xs font-sans font-semibold text-white truncate max-w-[120px]">
-                  {hoveredBot.handle}
-                </span>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[9px] font-sans text-zinc-600 uppercase tracking-wider">Balance</span>
-                  <span className={`text-[10px] font-mono font-bold tabular-nums ${
-                    hoveredBot.status === 'ALIVE' ? 'text-accent-green' : 'text-accent-red/60'
-                  }`}>
-                    {hoveredBot.status === 'ALIVE'
-                      ? `${Number(hoveredBot.balance).toFixed(2)}c`
-                      : 'LIQUIDATED'
-                    }
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-[9px] font-sans text-zinc-600 uppercase tracking-wider">Status</span>
-                  <span className={`text-[9px] font-mono font-semibold ${
-                    hoveredBot.status === 'ALIVE' ? 'text-accent-green' : 'text-accent-red/50'
-                  }`}>
-                    {hoveredBot.status}
-                  </span>
-                </div>
-                {recentActivity.has(hoveredBot.id) && (
-                  <div className="mt-1.5 pt-1.5 border-t border-titan-border">
-                    <span className="text-[8px] font-sans text-zinc-600 uppercase tracking-wider block mb-0.5">
-                      Last Action
-                    </span>
-                    <p className="text-[9px] font-sans text-zinc-400 leading-snug line-clamp-2">
-                      {recentActivity.get(hoveredBot.id)}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ── Ledger Stream — maximum density, institutional brutalism (v6) ─────────────
-// Columns (single line, 9px mono): TIME | HANDLE | BADGE | CONTENT | AMOUNT
-// Filter input row. All entries shown (no cap). Auto-scroll to newest on arrival.
-// Intensity opacity kept: HBT fades to 28%, DIE/PAY burn at full opacity.
-
-function deriveBadge(content: string): { label: string; color: string } {
-  const c = content.toLowerCase();
-  if (c.includes('liquidat') || c.includes('eliminated')) return { label: 'DIE', color: 'text-accent-red' };
-  if (c.includes('payout')   || c.includes('reward'))     return { label: 'PAY', color: 'text-accent-green' };
-  if (c.includes('research') || c.includes('bounty'))     return { label: 'RSC', color: 'text-accent-cyan' };
-  if (c.includes('wagered')  || c.includes('market'))     return { label: 'BET', color: 'text-accent-amber' };
-  return { label: 'HBT', color: 'text-zinc-600' };
-}
-
-function extractAmount(content: string): number {
-  const m = content.match(/(\d+(?:\.\d+)?)\s*c\b/i);
-  return m ? parseFloat(m[1] ?? '0') : 0;
-}
-
-function entryIntensity(label: string, amount: number, maxAmount: number): number {
-  const max = maxAmount || 1;
-  switch (label) {
-    case 'DIE': return 1.0;
-    case 'PAY': return 0.90;
-    case 'RSC': return Math.max(0.68, 0.68 + (amount / max) * 0.32);
-    case 'BET': return Math.max(0.52, 0.52 + (amount / max) * 0.38);
-    default:    return 0.28;
-  }
-}
-
-const LedgerStream = memo(({ entries, streamEvents, botsById }: {
-  entries: ActivityEntry[];
-  streamEvents: StreamEvent[];
-  botsById: Map<number, string>;
-}) => {
-  const scrollRef             = useRef<HTMLDivElement>(null);
-  const topId                 = entries[0]?.id ?? null;
-  const [newEntryId,  setNew] = useState<number | null>(null);
-  const [filter,   setFilter] = useState('');
-
-  // Auto-scroll to top (newest) when a new entry arrives
-  useEffect(() => {
-    if (topId == null) return;
-    setNew(topId);
-    if (!filter) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-    const t = setTimeout(() => setNew(null), 1200);
-    return () => clearTimeout(t);
-  }, [topId, filter]);
-
-  // Filter by handle or content (case-insensitive)
-  const visible = useMemo(() => {
-    if (!filter.trim()) return entries;
-    const q = filter.toLowerCase();
-    return entries.filter(
-      (e) => e.author_handle.toLowerCase().includes(q) || e.content.toLowerCase().includes(q),
-    );
-  }, [entries, filter]);
-
-  const maxAmount = useMemo(() => {
-    let max = 0;
-    for (const e of visible) {
-      const badge = deriveBadge(e.content);
-      if (badge.label !== 'HBT') {
-        const amt = extractAmount(e.content);
-        if (amt > max) max = amt;
-      }
-    }
-    return max;
-  }, [visible]);
-
-  // WS live-pulse: last 8 non-HEARTBEAT stream events (rendered above REST rows)
-  const livePulse = useMemo(
-    () => streamEvents.filter((ev) => ev.e !== 'H').slice(0, 8),
-    [streamEvents],
-  );
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-titan-border shrink-0">
-        <span className="text-[10px] font-mono font-bold text-accent-cyan uppercase tracking-widest">
-          LEDGER
-        </span>
-        <span className="ml-auto text-[10px] font-mono text-zinc-600 tabular-nums">
-          {visible.length}/{entries.length}
-        </span>
-      </div>
-
-      {/* ── Filter input ────────────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-titan-border">
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="FILTER HANDLE / CONTENT..."
-          className="w-full bg-transparent px-2 py-1 text-[10px] font-mono text-zinc-400 placeholder:text-zinc-700 outline-none border-0"
-          style={{ fontFamily: '"JetBrains Mono","Courier New",monospace' }}
-          spellCheck={false}
-        />
-      </div>
-
-      {/* ── Column headers ──────────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-0 px-2 py-[2px] border-b border-titan-border/60 shrink-0"
-        style={{ fontFamily: '"JetBrains Mono","Courier New",monospace', fontSize: '9px' }}
-      >
-        <span className="w-[54px] text-zinc-700 shrink-0">TIME</span>
-        <span className="w-[58px] text-zinc-700 shrink-0">HANDLE</span>
-        <span className="w-[30px] text-zinc-700 shrink-0">TYPE</span>
-        <span className="flex-1 text-zinc-700 min-w-0">CONTENT</span>
-        <span className="w-[42px] text-zinc-700 text-right shrink-0">AMT</span>
-      </div>
-
-      {/* ── WS Live Pulse (non-HBT stream events, newest first) ─────────────── */}
-      {livePulse.length > 0 && (
-        <div className="shrink-0 border-b border-[#1f1f1f]">
-          {livePulse.map((ev, i) => {
-            const badge   = EV_BADGE[ev.e];
-            const handle  = botsById.get(ev.b) ?? `#${ev.b}`;
-            const t       = new Date(ev.t * 1000).toLocaleTimeString('en', {
-              hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
-            });
-            return (
-              <div
-                key={`ws-${ev.t}-${ev.b}-${i}`}
-                className="flex items-center gap-0 px-2 border-b border-[#181818] bg-[#0e1a14]/60"
-                style={{
-                  height:     '20px',
-                  fontFamily: '"JetBrains Mono","Courier New",monospace',
-                  fontSize:   '10px',
-                  lineHeight: '20px',
-                  opacity:    i === 0 ? 1 : Math.max(0.35, 1 - i * 0.1),
-                }}
-              >
-                <span className="w-[54px] text-zinc-600 tabular-nums shrink-0 truncate">{t}</span>
-                <span className="w-[58px] text-accent-green/60 truncate shrink-0">{handle}</span>
-                <span className={`w-[30px] font-bold shrink-0 ${badge.color}`}>{badge.label}</span>
-                <span className="flex-1 text-zinc-700 truncate min-w-0 italic">
-                  {ev.e === 'L' ? 'liquidated'
-                    : ev.e === 'W' ? 'wager placed'
-                    : ev.e === 'R' ? 'research/portfolio'
-                    : 'heartbeat'}
-                </span>
-                <span className="w-[42px] text-zinc-600 tabular-nums text-right shrink-0">
-                  {ev.a != null ? `${ev.a.toFixed(2)}c` : '—'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Rows ────────────────────────────────────────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto min-h-0">
-        {visible.length === 0 ? (
-          <div className="px-2 py-4 text-center text-[9px] font-mono text-zinc-700 uppercase tracking-widest">
-            {filter ? 'NO MATCH' : 'AWAITING ENTRIES...'}
-          </div>
-        ) : (
-          visible.map((entry) => {
-            const badge     = deriveBadge(entry.content);
-            const amount    = extractAmount(entry.content);
-            const intensity = entryIntensity(badge.label, amount, maxAmount);
-            const isNew     = entry.id === newEntryId;
-            const t         = new Date(entry.created_at).toLocaleTimeString('en', {
-              hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit',
-            });
-
-            return (
-              <div
-                key={entry.id}
-                className="flex items-center gap-0 px-2 border-b border-[#1f1f1f] hover:bg-[#131313]"
-                style={{
-                  opacity:    intensity,
-                  background: isNew ? 'rgba(0,240,255,0.035)' : undefined,
-                  transition: 'background 900ms ease',
-                  height:     '20px',
-                  fontFamily: '"JetBrains Mono","Courier New",monospace',
-                  fontSize:   '10px',
-                  lineHeight: '20px',
-                }}
-              >
-                {/* TIME */}
-                <span className="w-[54px] text-zinc-600 tabular-nums shrink-0 truncate">
-                  {t}
-                </span>
-
-                {/* HANDLE */}
-                <span className="w-[58px] text-accent-green/80 truncate shrink-0">
-                  {entry.author_handle}
-                </span>
-
-                {/* BADGE */}
-                <span className={`w-[30px] font-bold shrink-0 ${badge.color}`}>
-                  {badge.label}
-                </span>
-
-                {/* CONTENT */}
-                <span className="flex-1 text-zinc-500 truncate min-w-0">
-                  {entry.content}
-                </span>
-
-                {/* AMOUNT */}
-                <span className="w-[42px] text-zinc-600 tabular-nums text-right shrink-0">
-                  {amount > 0 ? `${amount.toFixed(2)}c` : '—'}
-                </span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
+    <svg viewBox={`0 0 ${VW} ${H}`} preserveAspectRatio="none"
+         width="100%" height={H} style={{ display: 'block' }}>
+      <polyline points={pts} fill="none" stroke={color}
+        strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" opacity={0.88} />
+    </svg>
   );
 });
 
-// ── Stat Card — with value-change flash ───────────────────────────────────────
+// ── Battleground Panel ────────────────────────────────────────────────────────
 
-const StatCard = ({ icon: Icon, label, value, variant, sub }: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  variant: StatVariant;
-  sub?: string;
-}) => {
-  const cfg       = STAT_CONFIG[variant];
-  const prevValue = useRef(value);
-  const [flash, setFlash] = useState(false);
-
-  useEffect(() => {
-    if (String(prevValue.current) !== String(value)) {
-      prevValue.current = value;
-      setFlash(true);
-      const t = setTimeout(() => setFlash(false), 500);
-      return () => clearTimeout(t);
-    }
-  }, [value]);
-
-  return (
-    <div
-      className={`rounded-xl border bg-black/60 backdrop-blur-xl p-4 flex items-center gap-3.5 ${cfg.border}`}
-      style={{
-        boxShadow:  flash ? cfg.shadowFlash : cfg.shadow,
-        transform:  flash ? 'scale(1.015)' : 'scale(1)',
-        transition: 'box-shadow 300ms ease, transform 300ms ease',
-      }}
-    >
-      <div className={`w-10 h-10 flex items-center justify-center shrink-0 ${cfg.icon}`}>
-        <Icon size={17} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-sans text-zinc-500 uppercase tracking-widest mb-1">{label}</div>
-        <div className={`text-2xl font-sans font-bold tabular-nums leading-none ${cfg.value}`}>{value}</div>
-        {sub && <div className="text-[9px] font-sans text-zinc-600 mt-1 uppercase tracking-wide">{sub}</div>}
-      </div>
+const BattlegroundPanel = memo(({
+  aliveCount, deadCount, totalEconomy,
+  aliveSpark, deathsSpark, econSpark, rschSpark,
+  deathsPerMin, rschPerMin, entropyBurn,
+}: {
+  aliveCount:    number;
+  deadCount:     number;
+  totalEconomy:  number;
+  aliveSpark:    SparkPt[];
+  deathsSpark:   SparkPt[];
+  econSpark:     SparkPt[];
+  rschSpark:     SparkPt[];
+  deathsPerMin:  number;
+  rschPerMin:    number;
+  entropyBurn:   number;
+}) => (
+  <div className="bg-panel">
+    <div className="bg-panel__header">
+      <span className="bg-live-tag">● LIVE</span>
+      <span className="bg-panel__title">AGENT BATTLEGROUND</span>
+      <span className="bg-panel__meta">5-MIN · 10s SAMPLE</span>
     </div>
-  );
-};
 
-// ── Market Snapshot Card ──────────────────────────────────────────────────────
-
-const MarketSnapshotCard = ({ market, now }: { market: Market; now: number }) => {
-  const deadlineMs  = new Date(market.deadline).getTime();
-  const secondsLeft = Math.max(0, (deadlineMs - now) / 1000);
-  const isExpired   = secondsLeft <= 0;
-  const isUrgent    = secondsLeft > 0 && secondsLeft < 60;
-  const isWarning   = secondsLeft > 0 && secondsLeft < 180;
-  const isResearch  = market.source_type === 'RESEARCH';
-
-  const badgeColor     = SOURCE_BADGE[market.source_type] ?? 'border-zinc-600/30 text-zinc-400 bg-zinc-700/5';
-  const countdownColor = isExpired  ? 'text-zinc-600'
-    : isUrgent  ? 'text-accent-red'
-    : isWarning ? 'text-accent-amber'
-    : 'text-zinc-500';
-
-  return (
-    <div
-      className={`rounded-xl border bg-black/70 backdrop-blur-xl p-4 flex flex-col transition-all ${
-        isExpired
-          ? 'opacity-40 border-titan-border'
-          : isResearch
-            ? 'border-accent-cyan/30'
-            : 'border-titan-border hover:border-zinc-700'
-      }`}
-      style={isResearch && !isExpired ? { boxShadow: '0 0 24px rgba(0,240,255,0.08)' } : undefined}
-    >
-      <div className="flex items-center justify-between mb-2.5">
-        <span className={`text-[8px] px-2 py-0.5 rounded-full border font-sans font-semibold uppercase tracking-widest ${badgeColor}`}>
-          {market.source_type}
-        </span>
-        <span className={`font-mono font-bold text-base ${isResearch ? 'text-accent-cyan' : 'text-accent-green'}`}>
-          {Number(market.bounty).toFixed(0)}c
-        </span>
-      </div>
-
-      <p className="text-xs font-sans text-zinc-400 mb-3 leading-relaxed line-clamp-2 flex-1">
-        {market.description}
-      </p>
-
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className={`text-[9px] font-mono flex items-center gap-1 ${countdownColor}`}>
-            <Clock size={9} className={isUrgent ? 'animate-pulse' : ''} />
-            {isExpired ? 'EXPIRED' : formatCountdown(secondsLeft)}
-          </span>
-          {!isExpired && (
-            <span className={`text-[9px] font-mono tabular-nums font-bold ${countdownColor}`}>
-              {Math.ceil(secondsLeft)}s
-            </span>
-          )}
+    <div className="bg-stats">
+      <div className="bg-stat">
+        <div className="bg-stat__row">
+          <span className="bg-stat__label">ALIVE</span>
+          <span className="bg-stat__sub">AGENTS</span>
         </div>
-        {!isExpired && (
-          <div className="w-full h-1 rounded-full bg-oled-black overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-1000 ${
-                isUrgent ? 'bg-accent-red' : isWarning ? 'bg-accent-amber' : 'bg-accent-cyan'
-              }`}
-              style={{ width: `${Math.min((secondsLeft / 300) * 100, 100)}%` }}
-            />
-          </div>
-        )}
-        {!isExpired && (
-          <button
-            onClick={() => console.log('BET', market.id, market.description)}
-            className={`w-full mt-1 py-1.5 rounded-lg text-[9px] font-sans font-semibold uppercase tracking-widest border transition-colors ${
-              isResearch
-                ? 'border-accent-cyan/30 text-accent-cyan hover:bg-accent-cyan/10'
-                : 'border-accent-green/30 text-accent-green hover:bg-accent-green/10'
-            }`}
-          >
-            Place Bet
-          </button>
-        )}
+        <span className="bg-stat__val" style={{ color: '#00FF9F' }}>{aliveCount}</span>
+        <Sparkline data={aliveSpark} H={28} color="#00FF9F" />
+      </div>
+
+      <div className="bg-stat bg-stat--accent">
+        <div className="bg-stat__row">
+          <span className="bg-stat__label">DEATHS</span>
+          <span className="bg-stat__sub">{deathsPerMin}/MIN</span>
+        </div>
+        <span className="bg-stat__val" style={{ color: '#FF3B30' }}>{deadCount}</span>
+        <Sparkline data={deathsSpark} H={28} color="#FF3B30" />
+      </div>
+
+      <div className="bg-stat">
+        <div className="bg-stat__row">
+          <span className="bg-stat__label">RESEARCH</span>
+          <span className="bg-stat__sub">{rschPerMin}/MIN</span>
+        </div>
+        <span className="bg-stat__val" style={{ color: '#00F0FF' }}>{rschPerMin}</span>
+        <Sparkline data={rschSpark} H={28} color="#00F0FF" />
+      </div>
+
+      <div className="bg-stat">
+        <div className="bg-stat__row">
+          <span className="bg-stat__label">ECONOMY</span>
+          <span className="bg-stat__sub">TOTAL BALANCE</span>
+        </div>
+        <span className="bg-stat__val" style={{ color: '#FF9500' }}>
+          {totalEconomy.toFixed(0)}<span style={{ fontSize: '0.5rem', opacity: 0.5 }}>c</span>
+        </span>
+        <Sparkline data={econSpark} H={28} color="#FF9500" />
+      </div>
+
+      <div className="bg-stat">
+        <div className="bg-stat__row">
+          <span className="bg-stat__label">ENTROPY BURN</span>
+          <span className="bg-stat__sub">COUNTERFACTUAL/MIN</span>
+        </div>
+        <span className="bg-stat__val" style={{ color: '#FF3B30', fontSize: '0.875rem' }}>
+          {entropyBurn.toFixed(2)}<span style={{ fontSize: '0.5rem', opacity: 0.5 }}>c</span>
+        </span>
       </div>
     </div>
-  );
-};
+  </div>
+));
 
-// ── Main Dashboard ────────────────────────────────────────────────────────────
+// ── Main Arena Dashboard ──────────────────────────────────────────────────────
 
 const ArenaDashboard = () => {
   const queryClient = useQueryClient();
@@ -911,110 +572,262 @@ const ArenaDashboard = () => {
   const { data: markets, refetch: refetchMarkets } = useMarkets();
   const { data: feed,    refetch: refetchFeed    } = useActivityFeed();
   const { events: streamEvents, lastEvent, connected: wsConnected } = useArenaStream();
-  const [now, setNow]               = useState(Date.now());
-  const [isCommandOpen, setCommand] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
+  // ── UI state ────────────────────────────────────────────────────────────────
+  const [isCommandOpen,  setCommand]      = useState(false);
+  const [selectedAgentId, setAgentId]    = useState<number | null>(null);
+  const [hoveredBot,    setHoveredBot]   = useState<Bot | null>(null);
+  const [hoverPos,      setHoverPos]     = useState({ x: 0, y: 0 });
+  const [animTick,      setAnimTick]     = useState(0);
+  const [kiaFlash,      setKiaFlash]     = useState(false);
+  const [dims,          setDims]         = useState({ w: 1200, h: 700 });
+  const [graveyardShards, setGraveyard] = useState<GraveyardShard[]>([]);
+  const [sidePanel,     setSidePanel]   = useState<'ledger' | 'orderbook' | 'battleground' | null>(null);
+  const [bgSpark,       setBgSpark]     = useState<{
+    alive: SparkPt[]; deaths: SparkPt[]; economy: SparkPt[]; research: SparkPt[];
+  }>({ alive: [], deaths: [], economy: [], research: [] });
+
+  // ── Refs ─────────────────────────────────────────────────────────────────────
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const prevDeadRef   = useRef<number | null>(null);
+  const seenDeadIds   = useRef<Set<number>>(new Set());
+  const bgEvtLog      = useRef<Array<{ t: number; e: string }>>([]);
+  const bgCurRef      = useRef({ alive: 0, deaths: 0, economy: 0 });
+
+  // ── Canvas resize ───────────────────────────────────────────────────────────
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r) setDims({ w: Math.floor(r.width), h: Math.floor(r.height) });
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
   }, []);
 
-  const toggleCommand = useCallback(() => setCommand((v) => !v), []);
-  const closeCommand  = useCallback(() => setCommand(false), []);
+  // ── Orbital animation ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const id = setInterval(() => setAnimTick((t) => t + 1), 120);
+    return () => clearInterval(id);
+  }, []);
 
-  const handleCommandAction = useCallback((id: CommandId) => {
+  // ── Data ─────────────────────────────────────────────────────────────────────
+  const allBots:   Bot[]           = bots ?? [];
+  const aliveBots: Bot[]           = useMemo(() => allBots.filter(b => b.status === 'ALIVE'), [allBots]);
+  const deadBots:  Bot[]           = useMemo(() => allBots.filter(b => b.status === 'DEAD'),  [allBots]);
+  const feedEntries: ActivityEntry[] = feed ?? [];
+  const openMarkets                = markets ?? [];
+
+  const totalEconomy = useMemo(
+    () => allBots.reduce((s, b) => s + Number(b.balance), 0),
+    [allBots],
+  );
+  const lethality = allBots.length > 0 ? (deadBots.length / allBots.length) * 100 : 0;
+
+  const botsById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const b of allBots) m.set(b.id, b.handle);
+    return m;
+  }, [allBots]);
+
+  // ── Stale-closure-free ref update (during render) ────────────────────────────
+  bgCurRef.current = { alive: aliveBots.length, deaths: deadBots.length, economy: totalEconomy };
+
+  // ── WS event counts per bot (for betrayal + PD) ──────────────────────────────
+  const eventCountsByBot = useMemo(() => {
+    const m = new Map<number, { W: number; total: number }>();
+    for (const ev of streamEvents) {
+      const c = m.get(ev.b) ?? { W: 0, total: 0 };
+      m.set(ev.b, { W: c.W + (ev.e === 'W' ? 1 : 0), total: c.total + 1 });
+    }
+    return m;
+  }, [streamEvents]);
+
+  // ── KIA flash ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const dc = deadBots.length;
+    if (prevDeadRef.current !== null && dc > prevDeadRef.current) {
+      setKiaFlash(true);
+      const t = setTimeout(() => setKiaFlash(false), 800);
+      prevDeadRef.current = dc;
+      return () => clearTimeout(t);
+    }
+    prevDeadRef.current = dc;
+  }, [deadBots.length]);
+
+  // ── Graveyard accumulation ────────────────────────────────────────────────────
+  useEffect(() => {
+    let changed = false;
+    const next: GraveyardShard[] = [];
+    for (const bot of deadBots) {
+      if (!seenDeadIds.current.has(bot.id)) {
+        seenDeadIds.current.add(bot.id);
+        next.push({
+          botId:   bot.id,
+          handle:  bot.handle,
+          xFrac:   0.04 + Math.random() * 0.92,
+          yFrac:   0.04 + Math.random() * 0.82,
+          rot:     Math.random() * 360,
+          opacity: 0.3 + Math.random() * 0.3,
+        });
+        changed = true;
+      }
+    }
+    if (changed) setGraveyard(prev => [...prev, ...next]);
+  }, [deadBots]);
+
+  // ── Cache invalidation ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!lastEvent) return;
+    if (lastEvent.e === 'L') void queryClient.invalidateQueries({ queryKey: ['bots'] });
+    if (lastEvent.e === 'W' || lastEvent.e === 'R')
+      void queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
+  }, [lastEvent, queryClient]);
+
+  // ── Battleground: event log tracker ──────────────────────────────────────────
+  useEffect(() => {
+    if (!lastEvent) return;
+    const now = Date.now();
+    bgEvtLog.current = [
+      ...bgEvtLog.current.filter(x => x.t > now - 5 * 60_000),
+      { t: now, e: lastEvent.e },
+    ];
+  }, [lastEvent]);
+
+  // ── Battleground: 10-second sparkline sampler ─────────────────────────────────
+  useEffect(() => {
+    const sample = () => {
+      const now     = Date.now();
+      const c       = bgCurRef.current;
+      const rschNow = bgEvtLog.current.filter(x => x.t > now - 60_000 && x.e === 'R').length;
+      setBgSpark(prev => ({
+        alive:    [...prev.alive.slice(-(MAX_SPARK - 1)),    { t: now, v: c.alive }],
+        deaths:   [...prev.deaths.slice(-(MAX_SPARK - 1)),   { t: now, v: c.deaths }],
+        economy:  [...prev.economy.slice(-(MAX_SPARK - 1)),  { t: now, v: c.economy }],
+        research: [...prev.research.slice(-(MAX_SPARK - 1)), { t: now, v: rschNow }],
+      }));
+    };
+    sample();
+    const id = setInterval(sample, 10_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Battleground: per-minute rates ───────────────────────────────────────────
+  const bgRates = useMemo(() => {
+    const now = Date.now();
+    const cut = now - 60_000;
+    const r1m = bgEvtLog.current.filter(x => x.t > cut);
+    return {
+      deathsPerMin:      r1m.filter(x => x.e === 'L').length,
+      researchPerMin:    r1m.filter(x => x.e === 'R').length,
+      entropyBurnPerMin: parseFloat((aliveBots.length * 0.5 * 6).toFixed(2)),
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastEvent, aliveBots.length]);
+
+  // ── Custom event bridge (from TerminalLayout floating bar) ────────────────────
+  useEffect(() => {
+    const handler = () => setCommand(true);
+    window.addEventListener('clawx:command-open', handler);
+    return () => window.removeEventListener('clawx:command-open', handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const panel = (e as CustomEvent<string>).detail as 'ledger' | 'orderbook' | 'battleground';
+      setSidePanel(prev => prev === panel ? null : panel);
+    };
+    window.addEventListener('clawx:panel', handler);
+    return () => window.removeEventListener('clawx:panel', handler);
+  }, []);
+
+  // ── Entropy well ──────────────────────────────────────────────────────────────
+  const maxWellRadius = Math.min(dims.w, dims.h) * MAX_WELL_RAD_FRAC;
+  const wellRadius = useMemo(() => {
+    const genesis = aliveBots.length * INITIAL_BALANCE;
+    if (genesis === 0) return maxWellRadius * 0.38;
+    return maxWellRadius * Math.max(0.08, Math.min(1, totalEconomy / genesis));
+  }, [totalEconomy, aliveBots.length, maxWellRadius]);
+
+  // ── Canvas center ─────────────────────────────────────────────────────────────
+  const cx = dims.w / 2;
+  const cy = dims.h * 0.42;
+
+  // ── Orbital positions ─────────────────────────────────────────────────────────
+  const agentPositions = useMemo<AgentPos[]>(() => {
+    const maxBal  = Math.max(...aliveBots.map(b => Number(b.balance)), 1);
+    const elapsed = animTick * 0.12;
+    return aliveBots.map((bot): AgentPos => {
+      const balance  = Number(bot.balance);
+      const balFrac  = balance / maxBal;
+      const ring: 0 | 1 | 2 = balFrac > 0.66 ? 0 : balFrac > 0.33 ? 1 : 2;
+      const orbitR   = ORBIT_RADII[ring];
+      const speed    = ORBIT_SPEEDS[ring];
+      const baseAngle = (bot.id * GOLDEN_ANGLE) % 360;
+      const rad       = ((baseAngle + elapsed * speed) % 360) * (Math.PI / 180);
+      return {
+        bot,
+        x:      cx + orbitR * Math.cos(rad),
+        y:      cy + orbitR * Math.sin(rad),
+        ring,
+        orbitR,
+        nodeR:  nodeRadius(balance, maxBal),
+      };
+    });
+  }, [animTick, aliveBots, cx, cy]);
+
+  // ── Dominant bot ─────────────────────────────────────────────────────────────
+  const dominantId = useMemo(
+    () => aliveBots.reduce<Bot | null>(
+      (top, b) => (!top || Number(b.balance) > Number(top.balance)) ? b : top, null,
+    )?.id ?? null,
+    [aliveBots],
+  );
+
+  // ── Recent event by bot ───────────────────────────────────────────────────────
+  const recentEvtByBot = useMemo(() => {
+    const m: Record<number, StreamEvent['e']> = {};
+    for (const ev of streamEvents) { if (!(ev.b in m)) m[ev.b] = ev.e; }
+    return m;
+  }, [streamEvents]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────────
+  const toggleCommand = useCallback(() => setCommand(v => !v), []);
+  const closeCommand  = useCallback(() => setCommand(false), []);
+  const handleAction  = useCallback((id: CommandId) => {
     if (id === 'system:refresh') {
-      void refetchBots();
-      void refetchMarkets();
-      void refetchFeed();
+      void refetchBots(); void refetchMarkets(); void refetchFeed();
     }
   }, [refetchBots, refetchMarkets, refetchFeed]);
 
-  const allBots      = bots ?? [];
-  const alive        = allBots.filter((b) => b.status === 'ALIVE');
-  const dead         = allBots.filter((b) => b.status === 'DEAD');
-  const totalEconomy = allBots.reduce((sum, b) => sum + b.balance, 0);
-  const openMarkets  = markets ?? [];
-  const feedEntries  = feed ?? [];
-
-  // ── WS-derived: latest event code per bot_id (for BattlePanel EVT column) ──
-  const liveEventByBotId = useMemo(() => {
-    const map: Record<number, StreamEvent['e']> = {};
-    for (const ev of streamEvents) {
-      if (!(ev.b in map)) map[ev.b] = ev.e; // first occurrence = most recent (newest-first)
-    }
-    return map;
-  }, [streamEvents]);
-
-  // ── WS-derived: bot id → handle map (for LedgerStream live rows) ────────────
-  const botsById = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const b of allBots) map.set(b.id, b.handle);
-    return map;
-  }, [allBots]);
-
-  // ── Cache invalidation: WS events trigger immediate REST refetches ───────────
-  useEffect(() => {
-    if (!lastEvent) return;
-    if (lastEvent.e === 'L') {
-      // LIQUIDATION → bots list needs immediate update (DEAD status)
-      void queryClient.invalidateQueries({ queryKey: ['bots'] });
-    }
-    if (lastEvent.e === 'W' || lastEvent.e === 'R') {
-      // WAGER / RESEARCH → feed has a new entry; don't wait for 5s poll
-      void queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
-    }
-  }, [lastEvent, queryClient]);
-
-  // ── Derived data for topology polish ─────────────────────────────────────────
-
-  const botLastAction = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const e of feedEntries) {
-      if (!map.has(e.bot_id)) map.set(e.bot_id, e.content);
-    }
-    return map;
-  }, [feedEntries]);
-
-  const recentBotIds = useMemo(() => {
-    const ids    = new Set<number>();
-    const cutoff = Date.now() - 30_000;
-    for (const e of feedEntries.slice(0, 30)) {
-      if (new Date(e.created_at).getTime() > cutoff) ids.add(e.bot_id);
-    }
-    return ids;
-  }, [feedEntries]);
-
+  // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="arena-container relative h-full flex flex-col gap-3 p-3 bg-oled-black overflow-hidden">
+    <div className="arena-container relative h-full flex flex-col gap-1 bg-oled-black overflow-hidden">
 
-      {/* ── AGENT VIABILITY MODAL ────────────────────────────────────────────── */}
+      {/* Modals */}
       {selectedAgentId !== null && (
-        <AgentViabilityModal
-          botId={selectedAgentId}
-          onClose={() => setSelectedAgentId(null)}
-        />
+        <AgentViabilityModal botId={selectedAgentId} onClose={() => setAgentId(null)} />
       )}
-
-      {/* ── COMMAND PALETTE ──────────────────────────────────────────────────── */}
       <CommandPalette
-        open={isCommandOpen}
-        onClose={closeCommand}
-        onToggle={toggleCommand}
-        onAction={handleCommandAction}
+        open={isCommandOpen} onClose={closeCommand}
+        onToggle={toggleCommand} onAction={handleAction}
       />
 
-      {/* ── TOP BAR ──────────────────────────────────────────────────────────── */}
-      <TopBar
-        aliveCount={alive.length}
-        deadCount={dead.length}
-        marketCount={openMarkets.length}
-        onCommandOpen={() => setCommand(true)}
+      {/* Metrics bar */}
+      <MetricsBar
+        aliveCount={aliveBots.length}
+        deadCount={deadBots.length}
+        lethality={lethality}
+        totalEconomy={totalEconomy}
+        wellRadius={wellRadius}
+        maxWellRadius={maxWellRadius}
         wsConnected={wsConnected}
+        kiaFlash={kiaFlash}
+        onCommandOpen={() => setCommand(true)}
       />
 
-      {/* ── LIVE TICKER ──────────────────────────────────────────────────────── */}
+      {/* Live ticker */}
       <TickerBar
         streamEvents={streamEvents}
         connected={wsConnected}
@@ -1022,94 +835,134 @@ const ArenaDashboard = () => {
         feedEntries={feedEntries}
       />
 
-      {/* ── MAIN BENTO GRID ──────────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 grid grid-cols-[220px_1fr_264px] gap-3">
+      {/* Dark Forest SVG Arena + slide-in panel */}
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-0 relative rounded-xl border border-zinc-800/40 overflow-hidden"
+        style={{ background: '#020202' }}
+      >
+        <svg
+          width={dims.w}
+          height={dims.h}
+          style={{ display: 'block' }}
+        >
+          {/* Dot grid */}
+          <defs>
+            <pattern id="dg" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+              <circle cx="0.5" cy="0.5" r="0.5" fill="#1a1a1a" />
+            </pattern>
+          </defs>
+          <rect width={dims.w} height={dims.h} fill="url(#dg)" />
 
-        {/* LEFT — Order Book: flat agent table */}
-        <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden flex flex-col" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-          <BattlePanel bots={allBots} now={now} liveEventByBotId={liveEventByBotId} onAgentClick={(bot) => setSelectedAgentId(bot.id)} />
-        </div>
+          {/* Orbit ring guides */}
+          <OrbitRings cx={cx} cy={cy} />
 
-        {/* CENTER — Stats bento + Agent topology + Markets */}
-        <div className="flex flex-col gap-3 overflow-y-auto min-h-0">
+          {/* Betrayal lines — rendered behind nodes */}
+          <BetrayalLines positions={agentPositions} eventCountsByBot={eventCountsByBot} />
 
-          {/* 2×2 stat cards */}
-          <div className="grid grid-cols-2 gap-3 shrink-0">
-            <StatCard
-              icon={Users}
-              label="ACTIVE AGENTS"
-              value={alive.length}
-              variant="green"
-              sub={`${allBots.length} total deployed`}
-            />
-            <StatCard
-              icon={DollarSign}
-              label="TOTAL ECONOMY"
-              value={`${totalEconomy.toFixed(0)}c`}
-              variant="amber"
-              sub={alive.length > 0 ? `${(totalEconomy / alive.length).toFixed(0)}c avg/agent` : 'no agents'}
-            />
-            <StatCard
-              icon={Search}
-              label="OPEN MARKETS"
-              value={openMarkets.length}
-              variant="cyan"
-              sub={`${openMarkets.filter((m) => m.source_type === 'RESEARCH').length} research bounties`}
-            />
-            <StatCard
-              icon={Skull}
-              label="CASUALTIES"
-              value={dead.length}
-              variant="red"
-              sub={allBots.length > 0 ? `${((dead.length / allBots.length) * 100).toFixed(0)}% lethality` : 'no data'}
-            />
-          </div>
+          {/* Entropy well */}
+          <EntropyWell cx={cx} cy={cy} r={wellRadius} />
 
-          {/* Agent topology — labeled SVG node graph with tooltips + kb-nav */}
-          <AgentTopology
-            bots={allBots}
-            recentActivity={botLastAction}
-            recentBotIds={recentBotIds}
-            latestEvent={lastEvent}
-            onAgentClick={(bot) => setSelectedAgentId(bot.id)}
+          {/* Agent nodes */}
+          {agentPositions.map((pos) => (
+            <AgentNodeFixed
+              key={pos.bot.id}
+              pos={pos}
+              isDominant={pos.bot.id === dominantId}
+              isHovered={hoveredBot?.id === pos.bot.id}
+              recentEvent={recentEvtByBot[pos.bot.id]}
+              onHover={setHoveredBot}
+              onHoverPos={(x, y) => setHoverPos({ x, y })}
+              onClick={(bot) => setAgentId(bot.id)}
+            />
+          ))}
+
+          {/* Graveyard */}
+          <GraveyardDebris shards={graveyardShards} W={dims.w} H={dims.h} />
+
+          {/* Empty state */}
+          {aliveBots.length === 0 && (
+            <text x={cx} y={cy + 55} textAnchor="middle" fill="#2a2a2a" fontSize={11}
+              fontFamily='"JetBrains Mono","Courier New",monospace' letterSpacing="3">
+              NO AGENTS — DEPLOY TO ENTER THE DARK FOREST
+            </text>
+          )}
+
+          {/* Market count overlay */}
+          <text x={dims.w - 10} y={16} textAnchor="end" fill="#00F0FF" fontSize={8}
+            fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.45}>
+            {openMarkets.length} OPEN MARKETS
+          </text>
+
+          {/* Feed count overlay */}
+          <text x={10} y={16} textAnchor="start" fill="#FF9500" fontSize={8}
+            fontFamily='"JetBrains Mono","Courier New",monospace' opacity={0.45}>
+            {feedEntries.length} FEED ENTRIES
+          </text>
+        </svg>
+
+        {/* Prisoner's dilemma heatmap tooltip */}
+        {hoveredBot !== null && (
+          <PDHeatmap
+            hoveredBot={hoveredBot}
+            allBots={allBots}
+            eventCountsByBot={eventCountsByBot}
+            screenX={hoverPos.x}
+            screenY={hoverPos.y}
           />
+        )}
 
-          {/* Active Markets */}
-          <div className="shrink-0 pb-3">
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="flex items-center gap-2">
-                <Search size={12} className="text-accent-cyan" />
-                <span className="text-[10px] font-sans font-semibold text-accent-cyan uppercase tracking-widest">
-                  ACTIVE MARKETS
+        {/* Slide-in panel — always in DOM, clipped by overflow:hidden above */}
+        <div className={`slide-in-panel${sidePanel !== null ? ' slide-in-panel--open' : ''}`}>
+          {sidePanel !== null && (
+            <>
+              <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06] shrink-0">
+                <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-[0.15em]">
+                  {sidePanel === 'ledger'
+                    ? 'LEDGER'
+                    : sidePanel === 'orderbook'
+                    ? 'ORDER BOOK'
+                    : 'BATTLEGROUND'}
                 </span>
+                <button
+                  onClick={() => setSidePanel(null)}
+                  className="text-[9px] font-mono text-zinc-600 hover:text-zinc-300 transition-colors"
+                  aria-label="Close panel"
+                >
+                  ✕
+                </button>
               </div>
-              {openMarkets.length > 6 && (
-                <span className="text-[9px] font-sans text-zinc-600 uppercase flex items-center gap-1 tracking-wider">
-                  {openMarkets.length} TOTAL <ArrowRight size={9} />
-                </span>
+
+              {sidePanel === 'battleground' ? (
+                <div className="flex-1 overflow-y-auto">
+                  <BattlegroundPanel
+                    aliveCount={aliveBots.length}
+                    deadCount={deadBots.length}
+                    totalEconomy={totalEconomy}
+                    aliveSpark={bgSpark.alive}
+                    deathsSpark={bgSpark.deaths}
+                    econSpark={bgSpark.economy}
+                    rschSpark={bgSpark.research}
+                    deathsPerMin={bgRates.deathsPerMin}
+                    rschPerMin={bgRates.researchPerMin}
+                    entropyBurn={bgRates.entropyBurnPerMin}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto p-3">
+                  <p className="text-[8px] font-mono text-zinc-700 uppercase tracking-widest">
+                    {sidePanel === 'ledger'
+                      ? '// LEDGER · HASH CHAIN'
+                      : '// ORDER BOOK · OPEN MARKETS'}
+                  </p>
+                  <p className="text-[8px] font-mono text-zinc-800 mt-2">
+                    WIRE VIA GET /INSIGHTS/&#123;AGENT_ID&#125;
+                  </p>
+                </div>
               )}
-            </div>
-
-            {openMarkets.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                {openMarkets.slice(0, 6).map((market) => (
-                  <MarketSnapshotCard key={market.id} market={market} now={now} />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl p-8 text-center text-[10px] font-sans text-zinc-600 uppercase tracking-widest border border-titan-border bg-titan-grey">
-                NO OPEN MARKETS — AWAITING EXTERNAL DATA
-              </div>
-            )}
-          </div>
-
+            </>
+          )}
         </div>
-
-        {/* RIGHT — Dense ledger stream */}
-        <div className="rounded-xl border border-white/10 bg-black/70 backdrop-blur-xl overflow-hidden flex flex-col" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}>
-          <LedgerStream entries={feedEntries} streamEvents={streamEvents} botsById={botsById} />
-        </div>
-
       </div>
     </div>
   );

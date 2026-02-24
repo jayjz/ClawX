@@ -410,3 +410,369 @@ input:focus, textarea:focus {
 @keyframes explosion-ring { ... }
 .explosion-ring           { ... }
 */
+
+/* ── Dark Forest Entropy Grinder (v3.2) ──────────────────────────────────── */
+
+/* Entropy well outer glow — CSS fallback for browsers without SVG filter support */
+.entropy-well-glow {
+  filter: drop-shadow(0 0 18px rgba(255, 59, 48, 0.35))
+          drop-shadow(0 0 6px rgba(255, 59, 48, 0.18));
+}
+
+/* Betrayal line pulse — used on SVG line elements via className */
+@keyframes betrayal-pulse {
+  0%, 100% { opacity: var(--betrayal-opacity, 0.55); }
+  50%       { opacity: calc(var(--betrayal-opacity, 0.55) * 0.2); }
+}
+.betrayal-line-defection {
+  animation: betrayal-pulse 1.3s ease-in-out infinite;
+}
+
+/* Graveyard shard fade-in when first rendered */
+@keyframes shard-appear {
+  from { opacity: 0; transform: scale(0.4) rotate(var(--shard-rot, 0deg)); }
+  to   { opacity: var(--shard-opacity, 0.4); transform: scale(1) rotate(var(--shard-rot, 0deg)); }
+}
+.graveyard-shard {
+  animation: shard-appear 0.6s ease-out 1 forwards;
+}
+
+/* Arena canvas dark forest background */
+.dark-forest-canvas {
+  background: radial-gradient(ellipse at 50% 42%, #0d0000 0%, #020202 55%, #000000 100%);
+}
+
+/* v8 Danger Layer ──────────────────────────────────────────────────────────── */
+
+/* Pre-death pressure: red glow border on BattlePanel rows with balance < 3×ENTROPY_BASE */
+.agent-row-danger {
+  box-shadow: inset 0 0 0 1px rgba(255, 59, 48, 0.42), 0 0 10px rgba(255, 59, 48, 0.12);
+}
+
+/* Permanent scar: diagonal red line through dead agent rows */
+.agent-row-dead-scar {
+  position: relative;
+}
+
+.agent-row-dead-scar::after {
+  content: '';
+  position: absolute;
+  inset: 2px 8px;
+  background: linear-gradient(
+    135deg,
+    transparent calc(50% - 0.75px),
+    rgba(255, 59, 48, 1) calc(50% - 0.75px),
+    rgba(255, 59, 48, 1) calc(50% + 0.75px),
+    transparent calc(50% + 0.75px)
+  );
+  pointer-events: none;
+}
+
+/* ── v3.3 Telemetry Ribbon ──────────────────────────────────────────────────── */
+
+.telemetry-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 1rem;
+  height: 1.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.telemetry-ribbon::-webkit-scrollbar { display: none; }
+
+.telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.5625rem;
+  font-family: ui-monospace, 'JetBrains Mono', 'Courier New', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.telemetry-pill--alive {
+  color: #00FF9F;
+  border-color: rgba(0, 255, 159, 0.22);
+  background: rgba(0, 255, 159, 0.07);
+}
+.telemetry-pill--lethality {
+  color: rgba(255, 59, 48, 0.65);
+  border-color: rgba(255, 59, 48, 0.18);
+  background: rgba(255, 59, 48, 0.04);
+}
+.telemetry-pill--lethality-hot {
+  color: #FF3B30;
+  border-color: rgba(255, 59, 48, 0.42);
+  background: rgba(255, 59, 48, 0.11);
+  animation: telemetry-pulse 1.1s ease-in-out infinite;
+}
+.telemetry-pill--research {
+  color: #00F0FF;
+  border-color: rgba(0, 240, 255, 0.20);
+  background: rgba(0, 240, 255, 0.05);
+}
+.telemetry-pill--kia {
+  color: rgba(255, 59, 48, 0.45);
+  border-color: rgba(255, 59, 48, 0.12);
+  background: transparent;
+}
+.telemetry-pill--kia-hot {
+  color: #FF3B30;
+  border-color: rgba(255, 59, 48, 0.55);
+  background: rgba(255, 59, 48, 0.18);
+  animation: telemetry-pulse 0.42s ease-in-out 3;
+}
+
+@keyframes telemetry-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.38; }
+}
+
+/* ── v3.3 Floating Command Bar ──────────────────────────────────────────────── */
+
+.floating-cmd-bar {
+  position: fixed;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  pointer-events: none;
+}
+
+.floating-cmd-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.floating-cmd-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding-bottom: 0.4rem;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.22s ease-out, opacity 0.16s ease;
+}
+
+.floating-cmd-group:hover .floating-cmd-actions {
+  max-height: 10rem;
+  opacity: 1;
+}
+
+.floating-cmd-action {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  font-size: 0.5625rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(161, 161, 170, 0.75);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.14s, color 0.14s;
+}
+
+.floating-cmd-action:hover {
+  border-color: rgba(0, 255, 159, 0.42);
+  color: #00FF9F;
+}
+
+.floating-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.35rem 0.875rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 255, 159, 0.18);
+  background: rgba(0, 0, 0, 0.93);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
+  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.85), 0 0 10px rgba(0, 255, 159, 0.04);
+}
+
+.floating-cmd-btn:hover {
+  border-color: rgba(0, 255, 159, 0.42);
+  box-shadow: 0 4px 26px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 255, 159, 0.10);
+}
+
+.floating-cmd-label {
+  font-size: 0.5rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(113, 113, 122, 0.70);
+}
+
+/* ── v3.3 Slide-in Panel ────────────────────────────────────────────────────── */
+
+.slide-in-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 70%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(4, 4, 6, 0.92);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  z-index: 30;
+  transform: translateX(100%);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+
+.slide-in-panel--open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* ── v3.3 Ledger Row Flash ──────────────────────────────────────────────────── */
+
+@keyframes ledger-flash-win {
+  0%   { background-color: rgba(0, 255, 159, 0.22); }
+  15%  { background-color: rgba(0, 255, 159, 0.38); }
+  100% { background-color: transparent; }
+}
+
+@keyframes ledger-flash-loss {
+  0%   { background-color: rgba(255, 59, 48, 0.22); }
+  15%  { background-color: rgba(255, 59, 48, 0.38); }
+  100% { background-color: transparent; }
+}
+
+.ledger-flash-win  { animation: ledger-flash-win  0.4s ease-out 1 forwards; }
+.ledger-flash-loss { animation: ledger-flash-loss 0.4s ease-out 1 forwards; }
+
+/* ── v3.3 Battleground Panel ────────────────────────────────────────────────── */
+
+.bg-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.75rem;
+}
+
+.bg-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.bg-live-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  background: rgba(255, 59, 48, 0.15);
+  border: 1px solid rgba(255, 59, 48, 0.32);
+  color: #FF3B30;
+  font-size: 0.5rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  animation: telemetry-pulse 1.2s ease-in-out infinite;
+}
+
+.bg-panel__title {
+  font-size: 0.5625rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.bg-panel__meta {
+  margin-left: auto;
+  font-size: 0.4375rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  color: rgba(113, 113, 122, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.bg-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bg-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.048);
+  background: rgba(0, 0, 0, 0.32);
+}
+
+.bg-stat--accent {
+  border-color: rgba(255, 59, 48, 0.14);
+  background: rgba(255, 59, 48, 0.04);
+}
+
+.bg-stat__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.15rem;
+}
+
+.bg-stat__label {
+  font-size: 0.5rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(161, 161, 170, 0.5);
+}
+
+.bg-stat__val {
+  font-size: 1.125rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bg-stat__sub {
+  font-size: 0.4375rem;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  color: rgba(113, 113, 122, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

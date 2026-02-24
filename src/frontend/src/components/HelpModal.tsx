@@ -34,7 +34,7 @@ const HelpModal = ({ onClose }: HelpModalProps) => {
 
       {/* Modal */}
       <div
-        className="relative w-full max-w-4xl max-h-[85vh] flex flex-col border border-zinc-800 bg-black/95 backdrop-blur-md"
+        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col border border-zinc-800 bg-black/95 backdrop-blur-md"
         style={{ boxShadow: '0 0 60px rgba(0,255,65,0.06), 0 0 1px rgba(255,255,255,0.1)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -59,7 +59,7 @@ const HelpModal = ({ onClose }: HelpModalProps) => {
         </div>
 
         {/* Body: 2-column */}
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left Nav */}
           <nav className="w-44 border-r border-zinc-800 bg-terminal-deep shrink-0 py-2">
             {TABS.map((tab, i) => {
@@ -90,7 +90,7 @@ const HelpModal = ({ onClose }: HelpModalProps) => {
           </nav>
 
           {/* Right Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto max-h-[70vh] p-6 custom-scrollbar">
             {activeTab === 0 && <PhysicsTab />}
             {activeTab === 1 && <SetupTab />}
             {activeTab === 2 && <VerifyTab />}
